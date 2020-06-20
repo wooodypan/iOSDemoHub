@@ -1,0 +1,916 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 50;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		60730AF1249E49D1005AB6FB /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730AF0249E49D1005AB6FB /* AppDelegate.m */; };
+		60730AF4249E49D1005AB6FB /* GameViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730AF3249E49D1005AB6FB /* GameViewController.m */; };
+		60730AF7249E49D1005AB6FB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 60730AF5249E49D1005AB6FB /* Main.storyboard */; };
+		60730AFA249E49D1005AB6FB /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 60730AF8249E49D1005AB6FB /* LaunchScreen.storyboard */; };
+		60730AFD249E49D1005AB6FB /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730AFC249E49D1005AB6FB /* main.m */; };
+		60730B01249E49D1005AB6FB /* CrossPlatform.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 60730B00249E49D1005AB6FB /* CrossPlatform.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		60730B07249E49D1005AB6FB /* Interface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 60730B05249E49D1005AB6FB /* Interface.storyboard */; };
+		60730B0E249E49D2005AB6FB /* CrossPlatform Extension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 60730B0D249E49D2005AB6FB /* CrossPlatform Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		60730B14249E49D2005AB6FB /* InterfaceController.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B13249E49D2005AB6FB /* InterfaceController.m */; };
+		60730B17249E49D2005AB6FB /* ExtensionDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B16249E49D2005AB6FB /* ExtensionDelegate.m */; };
+		60730B21249E49D2005AB6FB /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B20249E49D2005AB6FB /* AppDelegate.m */; };
+		60730B24249E49D2005AB6FB /* GameViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B23249E49D2005AB6FB /* GameViewController.m */; };
+		60730B27249E49D2005AB6FB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 60730B25249E49D2005AB6FB /* Main.storyboard */; };
+		60730B2A249E49D2005AB6FB /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 60730B28249E49D2005AB6FB /* LaunchScreen.storyboard */; };
+		60730B2D249E49D2005AB6FB /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B2C249E49D2005AB6FB /* main.m */; };
+		60730B36249E49D2005AB6FB /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B35249E49D2005AB6FB /* AppDelegate.m */; };
+		60730B39249E49D2005AB6FB /* GameViewController.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B38249E49D2005AB6FB /* GameViewController.m */; };
+		60730B3C249E49D2005AB6FB /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 60730B3A249E49D2005AB6FB /* Main.storyboard */; };
+		60730B3F249E49D2005AB6FB /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730B3E249E49D2005AB6FB /* main.m */; };
+		60730B40249E49D2005AB6FB /* Actions.sks in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE3249E49C9005AB6FB /* Actions.sks */; };
+		60730B41249E49D2005AB6FB /* Actions.sks in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE3249E49C9005AB6FB /* Actions.sks */; };
+		60730B42249E49D2005AB6FB /* Actions.sks in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE3249E49C9005AB6FB /* Actions.sks */; };
+		60730B43249E49D2005AB6FB /* GameScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE4249E49C9005AB6FB /* GameScene.sks */; };
+		60730B44249E49D2005AB6FB /* GameScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE4249E49C9005AB6FB /* GameScene.sks */; };
+		60730B45249E49D2005AB6FB /* GameScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE4249E49C9005AB6FB /* GameScene.sks */; };
+		60730B46249E49D2005AB6FB /* GameScene.sks in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE4249E49C9005AB6FB /* GameScene.sks */; };
+		60730B47249E49D2005AB6FB /* GameScene.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730AE6249E49C9005AB6FB /* GameScene.m */; };
+		60730B48249E49D2005AB6FB /* GameScene.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730AE6249E49C9005AB6FB /* GameScene.m */; };
+		60730B49249E49D2005AB6FB /* GameScene.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730AE6249E49C9005AB6FB /* GameScene.m */; };
+		60730B4A249E49D2005AB6FB /* GameScene.m in Sources */ = {isa = PBXBuildFile; fileRef = 60730AE6249E49C9005AB6FB /* GameScene.m */; };
+		60730B4B249E49D2005AB6FB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE7249E49D1005AB6FB /* Assets.xcassets */; };
+		60730B4C249E49D2005AB6FB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE7249E49D1005AB6FB /* Assets.xcassets */; };
+		60730B4D249E49D2005AB6FB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE7249E49D1005AB6FB /* Assets.xcassets */; };
+		60730B4E249E49D2005AB6FB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 60730AE7249E49D1005AB6FB /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		60730B02249E49D1005AB6FB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 60730ADE249E49C9005AB6FB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60730AFF249E49D1005AB6FB;
+			remoteInfo = "CrossPlatform watchOS App";
+		};
+		60730B0F249E49D2005AB6FB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 60730ADE249E49C9005AB6FB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 60730B0C249E49D2005AB6FB;
+			remoteInfo = "CrossPlatform watchOS App Extension";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		60730B54249E49D2005AB6FB /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				60730B0E249E49D2005AB6FB /* CrossPlatform Extension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B58249E49D2005AB6FB /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				60730B01249E49D1005AB6FB /* CrossPlatform.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		60730AE3249E49C9005AB6FB /* Actions.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = Actions.sks; sourceTree = "<group>"; };
+		60730AE4249E49C9005AB6FB /* GameScene.sks */ = {isa = PBXFileReference; lastKnownFileType = file.sks; path = GameScene.sks; sourceTree = "<group>"; };
+		60730AE5249E49C9005AB6FB /* GameScene.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GameScene.h; sourceTree = "<group>"; };
+		60730AE6249E49C9005AB6FB /* GameScene.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GameScene.m; sourceTree = "<group>"; };
+		60730AE7249E49D1005AB6FB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		60730AEC249E49D1005AB6FB /* CrossPlatform.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrossPlatform.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		60730AEF249E49D1005AB6FB /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		60730AF0249E49D1005AB6FB /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		60730AF2249E49D1005AB6FB /* GameViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GameViewController.h; sourceTree = "<group>"; };
+		60730AF3249E49D1005AB6FB /* GameViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GameViewController.m; sourceTree = "<group>"; };
+		60730AF6249E49D1005AB6FB /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		60730AF9249E49D1005AB6FB /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		60730AFB249E49D1005AB6FB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		60730AFC249E49D1005AB6FB /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		60730B00249E49D1005AB6FB /* CrossPlatform.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrossPlatform.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		60730B06249E49D1005AB6FB /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Interface.storyboard; sourceTree = "<group>"; };
+		60730B08249E49D1005AB6FB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		60730B0D249E49D2005AB6FB /* CrossPlatform Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "CrossPlatform Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		60730B12249E49D2005AB6FB /* InterfaceController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = InterfaceController.h; sourceTree = "<group>"; };
+		60730B13249E49D2005AB6FB /* InterfaceController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = InterfaceController.m; sourceTree = "<group>"; };
+		60730B15249E49D2005AB6FB /* ExtensionDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ExtensionDelegate.h; sourceTree = "<group>"; };
+		60730B16249E49D2005AB6FB /* ExtensionDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ExtensionDelegate.m; sourceTree = "<group>"; };
+		60730B18249E49D2005AB6FB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		60730B1D249E49D2005AB6FB /* CrossPlatform.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrossPlatform.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		60730B1F249E49D2005AB6FB /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		60730B20249E49D2005AB6FB /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		60730B22249E49D2005AB6FB /* GameViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GameViewController.h; sourceTree = "<group>"; };
+		60730B23249E49D2005AB6FB /* GameViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GameViewController.m; sourceTree = "<group>"; };
+		60730B26249E49D2005AB6FB /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		60730B29249E49D2005AB6FB /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		60730B2B249E49D2005AB6FB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		60730B2C249E49D2005AB6FB /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		60730B32249E49D2005AB6FB /* CrossPlatform.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CrossPlatform.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		60730B34249E49D2005AB6FB /* AppDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
+		60730B35249E49D2005AB6FB /* AppDelegate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
+		60730B37249E49D2005AB6FB /* GameViewController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GameViewController.h; sourceTree = "<group>"; };
+		60730B38249E49D2005AB6FB /* GameViewController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GameViewController.m; sourceTree = "<group>"; };
+		60730B3B249E49D2005AB6FB /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		60730B3D249E49D2005AB6FB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		60730B3E249E49D2005AB6FB /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		60730AE9249E49D1005AB6FB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B0A249E49D2005AB6FB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B1A249E49D2005AB6FB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B2F249E49D2005AB6FB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		60730ADD249E49C9005AB6FB = {
+			isa = PBXGroup;
+			children = (
+				60730AE2249E49C9005AB6FB /* CrossPlatform Shared */,
+				60730AEE249E49D1005AB6FB /* CrossPlatform iOS */,
+				60730B04249E49D1005AB6FB /* CrossPlatform watchOS App */,
+				60730B11249E49D2005AB6FB /* CrossPlatform watchOS App Extension */,
+				60730B1E249E49D2005AB6FB /* CrossPlatform tvOS */,
+				60730B33249E49D2005AB6FB /* CrossPlatform macOS */,
+				60730AED249E49D1005AB6FB /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		60730AE2249E49C9005AB6FB /* CrossPlatform Shared */ = {
+			isa = PBXGroup;
+			children = (
+				60730AE3249E49C9005AB6FB /* Actions.sks */,
+				60730AE4249E49C9005AB6FB /* GameScene.sks */,
+				60730AE5249E49C9005AB6FB /* GameScene.h */,
+				60730AE6249E49C9005AB6FB /* GameScene.m */,
+				60730AE7249E49D1005AB6FB /* Assets.xcassets */,
+			);
+			path = "CrossPlatform Shared";
+			sourceTree = "<group>";
+		};
+		60730AED249E49D1005AB6FB /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				60730AEC249E49D1005AB6FB /* CrossPlatform.app */,
+				60730B00249E49D1005AB6FB /* CrossPlatform.app */,
+				60730B0D249E49D2005AB6FB /* CrossPlatform Extension.appex */,
+				60730B1D249E49D2005AB6FB /* CrossPlatform.app */,
+				60730B32249E49D2005AB6FB /* CrossPlatform.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		60730AEE249E49D1005AB6FB /* CrossPlatform iOS */ = {
+			isa = PBXGroup;
+			children = (
+				60730AEF249E49D1005AB6FB /* AppDelegate.h */,
+				60730AF0249E49D1005AB6FB /* AppDelegate.m */,
+				60730AF2249E49D1005AB6FB /* GameViewController.h */,
+				60730AF3249E49D1005AB6FB /* GameViewController.m */,
+				60730AF5249E49D1005AB6FB /* Main.storyboard */,
+				60730AF8249E49D1005AB6FB /* LaunchScreen.storyboard */,
+				60730AFB249E49D1005AB6FB /* Info.plist */,
+				60730AFC249E49D1005AB6FB /* main.m */,
+			);
+			path = "CrossPlatform iOS";
+			sourceTree = "<group>";
+		};
+		60730B04249E49D1005AB6FB /* CrossPlatform watchOS App */ = {
+			isa = PBXGroup;
+			children = (
+				60730B05249E49D1005AB6FB /* Interface.storyboard */,
+				60730B08249E49D1005AB6FB /* Info.plist */,
+			);
+			path = "CrossPlatform watchOS App";
+			sourceTree = "<group>";
+		};
+		60730B11249E49D2005AB6FB /* CrossPlatform watchOS App Extension */ = {
+			isa = PBXGroup;
+			children = (
+				60730B12249E49D2005AB6FB /* InterfaceController.h */,
+				60730B13249E49D2005AB6FB /* InterfaceController.m */,
+				60730B15249E49D2005AB6FB /* ExtensionDelegate.h */,
+				60730B16249E49D2005AB6FB /* ExtensionDelegate.m */,
+				60730B18249E49D2005AB6FB /* Info.plist */,
+			);
+			path = "CrossPlatform watchOS App Extension";
+			sourceTree = "<group>";
+		};
+		60730B1E249E49D2005AB6FB /* CrossPlatform tvOS */ = {
+			isa = PBXGroup;
+			children = (
+				60730B1F249E49D2005AB6FB /* AppDelegate.h */,
+				60730B20249E49D2005AB6FB /* AppDelegate.m */,
+				60730B22249E49D2005AB6FB /* GameViewController.h */,
+				60730B23249E49D2005AB6FB /* GameViewController.m */,
+				60730B25249E49D2005AB6FB /* Main.storyboard */,
+				60730B28249E49D2005AB6FB /* LaunchScreen.storyboard */,
+				60730B2B249E49D2005AB6FB /* Info.plist */,
+				60730B2C249E49D2005AB6FB /* main.m */,
+			);
+			path = "CrossPlatform tvOS";
+			sourceTree = "<group>";
+		};
+		60730B33249E49D2005AB6FB /* CrossPlatform macOS */ = {
+			isa = PBXGroup;
+			children = (
+				60730B34249E49D2005AB6FB /* AppDelegate.h */,
+				60730B35249E49D2005AB6FB /* AppDelegate.m */,
+				60730B37249E49D2005AB6FB /* GameViewController.h */,
+				60730B38249E49D2005AB6FB /* GameViewController.m */,
+				60730B3A249E49D2005AB6FB /* Main.storyboard */,
+				60730B3D249E49D2005AB6FB /* Info.plist */,
+				60730B3E249E49D2005AB6FB /* main.m */,
+			);
+			path = "CrossPlatform macOS";
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		60730AEB249E49D1005AB6FB /* CrossPlatform iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60730B59249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform iOS" */;
+			buildPhases = (
+				60730AE8249E49D1005AB6FB /* Sources */,
+				60730AE9249E49D1005AB6FB /* Frameworks */,
+				60730AEA249E49D1005AB6FB /* Resources */,
+				60730B58249E49D2005AB6FB /* Embed Watch Content */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				60730B03249E49D1005AB6FB /* PBXTargetDependency */,
+			);
+			name = "CrossPlatform iOS";
+			productName = "CrossPlatform iOS";
+			productReference = 60730AEC249E49D1005AB6FB /* CrossPlatform.app */;
+			productType = "com.apple.product-type.application";
+		};
+		60730AFF249E49D1005AB6FB /* CrossPlatform watchOS App */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60730B55249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform watchOS App" */;
+			buildPhases = (
+				60730AFE249E49D1005AB6FB /* Resources */,
+				60730B54249E49D2005AB6FB /* Embed App Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				60730B10249E49D2005AB6FB /* PBXTargetDependency */,
+			);
+			name = "CrossPlatform watchOS App";
+			productName = "CrossPlatform watchOS App";
+			productReference = 60730B00249E49D1005AB6FB /* CrossPlatform.app */;
+			productType = "com.apple.product-type.application.watchapp2";
+		};
+		60730B0C249E49D2005AB6FB /* CrossPlatform watchOS App Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60730B51249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform watchOS App Extension" */;
+			buildPhases = (
+				60730B09249E49D2005AB6FB /* Sources */,
+				60730B0A249E49D2005AB6FB /* Frameworks */,
+				60730B0B249E49D2005AB6FB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "CrossPlatform watchOS App Extension";
+			productName = "CrossPlatform watchOS App Extension";
+			productReference = 60730B0D249E49D2005AB6FB /* CrossPlatform Extension.appex */;
+			productType = "com.apple.product-type.watchkit2-extension";
+		};
+		60730B1C249E49D2005AB6FB /* CrossPlatform tvOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60730B5C249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform tvOS" */;
+			buildPhases = (
+				60730B19249E49D2005AB6FB /* Sources */,
+				60730B1A249E49D2005AB6FB /* Frameworks */,
+				60730B1B249E49D2005AB6FB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "CrossPlatform tvOS";
+			productName = "CrossPlatform tvOS";
+			productReference = 60730B1D249E49D2005AB6FB /* CrossPlatform.app */;
+			productType = "com.apple.product-type.application";
+		};
+		60730B31249E49D2005AB6FB /* CrossPlatform macOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 60730B5F249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform macOS" */;
+			buildPhases = (
+				60730B2E249E49D2005AB6FB /* Sources */,
+				60730B2F249E49D2005AB6FB /* Frameworks */,
+				60730B30249E49D2005AB6FB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "CrossPlatform macOS";
+			productName = "CrossPlatform macOS";
+			productReference = 60730B32249E49D2005AB6FB /* CrossPlatform.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		60730ADE249E49C9005AB6FB /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 1150;
+				ORGANIZATIONNAME = WeirdPan;
+				TargetAttributes = {
+					60730AEB249E49D1005AB6FB = {
+						CreatedOnToolsVersion = 11.5;
+					};
+					60730AFF249E49D1005AB6FB = {
+						CreatedOnToolsVersion = 11.5;
+					};
+					60730B0C249E49D2005AB6FB = {
+						CreatedOnToolsVersion = 11.5;
+					};
+					60730B1C249E49D2005AB6FB = {
+						CreatedOnToolsVersion = 11.5;
+					};
+					60730B31249E49D2005AB6FB = {
+						CreatedOnToolsVersion = 11.5;
+					};
+				};
+			};
+			buildConfigurationList = 60730AE1249E49C9005AB6FB /* Build configuration list for PBXProject "CrossPlatform" */;
+			compatibilityVersion = "Xcode 9.3";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 60730ADD249E49C9005AB6FB;
+			productRefGroup = 60730AED249E49D1005AB6FB /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				60730AEB249E49D1005AB6FB /* CrossPlatform iOS */,
+				60730AFF249E49D1005AB6FB /* CrossPlatform watchOS App */,
+				60730B0C249E49D2005AB6FB /* CrossPlatform watchOS App Extension */,
+				60730B1C249E49D2005AB6FB /* CrossPlatform tvOS */,
+				60730B31249E49D2005AB6FB /* CrossPlatform macOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		60730AEA249E49D1005AB6FB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B43249E49D2005AB6FB /* GameScene.sks in Resources */,
+				60730AF7249E49D1005AB6FB /* Main.storyboard in Resources */,
+				60730B40249E49D2005AB6FB /* Actions.sks in Resources */,
+				60730AFA249E49D1005AB6FB /* LaunchScreen.storyboard in Resources */,
+				60730B4B249E49D2005AB6FB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730AFE249E49D1005AB6FB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B4C249E49D2005AB6FB /* Assets.xcassets in Resources */,
+				60730B07249E49D1005AB6FB /* Interface.storyboard in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B0B249E49D2005AB6FB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B44249E49D2005AB6FB /* GameScene.sks in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B1B249E49D2005AB6FB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B45249E49D2005AB6FB /* GameScene.sks in Resources */,
+				60730B27249E49D2005AB6FB /* Main.storyboard in Resources */,
+				60730B41249E49D2005AB6FB /* Actions.sks in Resources */,
+				60730B2A249E49D2005AB6FB /* LaunchScreen.storyboard in Resources */,
+				60730B4D249E49D2005AB6FB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B30249E49D2005AB6FB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B3C249E49D2005AB6FB /* Main.storyboard in Resources */,
+				60730B46249E49D2005AB6FB /* GameScene.sks in Resources */,
+				60730B4E249E49D2005AB6FB /* Assets.xcassets in Resources */,
+				60730B42249E49D2005AB6FB /* Actions.sks in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		60730AE8249E49D1005AB6FB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730AF4249E49D1005AB6FB /* GameViewController.m in Sources */,
+				60730AFD249E49D1005AB6FB /* main.m in Sources */,
+				60730B47249E49D2005AB6FB /* GameScene.m in Sources */,
+				60730AF1249E49D1005AB6FB /* AppDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B09249E49D2005AB6FB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B17249E49D2005AB6FB /* ExtensionDelegate.m in Sources */,
+				60730B48249E49D2005AB6FB /* GameScene.m in Sources */,
+				60730B14249E49D2005AB6FB /* InterfaceController.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B19249E49D2005AB6FB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B24249E49D2005AB6FB /* GameViewController.m in Sources */,
+				60730B2D249E49D2005AB6FB /* main.m in Sources */,
+				60730B49249E49D2005AB6FB /* GameScene.m in Sources */,
+				60730B21249E49D2005AB6FB /* AppDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		60730B2E249E49D2005AB6FB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				60730B39249E49D2005AB6FB /* GameViewController.m in Sources */,
+				60730B3F249E49D2005AB6FB /* main.m in Sources */,
+				60730B4A249E49D2005AB6FB /* GameScene.m in Sources */,
+				60730B36249E49D2005AB6FB /* AppDelegate.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		60730B03249E49D1005AB6FB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60730AFF249E49D1005AB6FB /* CrossPlatform watchOS App */;
+			targetProxy = 60730B02249E49D1005AB6FB /* PBXContainerItemProxy */;
+		};
+		60730B10249E49D2005AB6FB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 60730B0C249E49D2005AB6FB /* CrossPlatform watchOS App Extension */;
+			targetProxy = 60730B0F249E49D2005AB6FB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		60730AF5249E49D1005AB6FB /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				60730AF6249E49D1005AB6FB /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		60730AF8249E49D1005AB6FB /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				60730AF9249E49D1005AB6FB /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		60730B05249E49D1005AB6FB /* Interface.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				60730B06249E49D1005AB6FB /* Base */,
+			);
+			name = Interface.storyboard;
+			sourceTree = "<group>";
+		};
+		60730B25249E49D2005AB6FB /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				60730B26249E49D2005AB6FB /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		60730B28249E49D2005AB6FB /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				60730B29249E49D2005AB6FB /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		60730B3A249E49D2005AB6FB /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				60730B3B249E49D2005AB6FB /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		60730B4F249E49D2005AB6FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+			};
+			name = Debug;
+		};
+		60730B50249E49D2005AB6FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+			};
+			name = Release;
+		};
+		60730B52249E49D2005AB6FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "CrossPlatform watchOS App Extension/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform.watchkitapp.watchkitextension;
+				PRODUCT_NAME = "CrossPlatform Extension";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 6.2;
+			};
+			name = Debug;
+		};
+		60730B53249E49D2005AB6FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "CrossPlatform watchOS App Extension/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform.watchkitapp.watchkitextension;
+				PRODUCT_NAME = "CrossPlatform Extension";
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 6.2;
+			};
+			name = Release;
+		};
+		60730B56249E49D2005AB6FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				IBSC_MODULE = CrossPlatform_Extension;
+				INFOPLIST_FILE = "CrossPlatform watchOS App/Info.plist";
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform.watchkitapp;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				WATCHOS_DEPLOYMENT_TARGET = 6.2;
+			};
+			name = Debug;
+		};
+		60730B57249E49D2005AB6FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				IBSC_MODULE = CrossPlatform_Extension;
+				INFOPLIST_FILE = "CrossPlatform watchOS App/Info.plist";
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform.watchkitapp;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				VALIDATE_PRODUCT = YES;
+				WATCHOS_DEPLOYMENT_TARGET = 6.2;
+			};
+			name = Release;
+		};
+		60730B5A249E49D2005AB6FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "CrossPlatform iOS/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		60730B5B249E49D2005AB6FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "CrossPlatform iOS/Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 13.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		60730B5D249E49D2005AB6FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "tvOS App Icon & Top Shelf Image";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "CrossPlatform tvOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = appletvos;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 13.4;
+			};
+			name = Debug;
+		};
+		60730B5E249E49D2005AB6FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "tvOS App Icon & Top Shelf Image";
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = "CrossPlatform tvOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = appletvos;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 13.4;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		60730B60249E49D2005AB6FB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "CrossPlatform macOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		60730B61249E49D2005AB6FB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				INFOPLIST_FILE = "CrossPlatform macOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 10.15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cocoapods.CrossPlatform;
+				PRODUCT_NAME = CrossPlatform;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		60730AE1249E49C9005AB6FB /* Build configuration list for PBXProject "CrossPlatform" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60730B4F249E49D2005AB6FB /* Debug */,
+				60730B50249E49D2005AB6FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60730B51249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform watchOS App Extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60730B52249E49D2005AB6FB /* Debug */,
+				60730B53249E49D2005AB6FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60730B55249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform watchOS App" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60730B56249E49D2005AB6FB /* Debug */,
+				60730B57249E49D2005AB6FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60730B59249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60730B5A249E49D2005AB6FB /* Debug */,
+				60730B5B249E49D2005AB6FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60730B5C249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform tvOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60730B5D249E49D2005AB6FB /* Debug */,
+				60730B5E249E49D2005AB6FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		60730B5F249E49D2005AB6FB /* Build configuration list for PBXNativeTarget "CrossPlatform macOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				60730B60249E49D2005AB6FB /* Debug */,
+				60730B61249E49D2005AB6FB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 60730ADE249E49C9005AB6FB /* Project object */;
+}
