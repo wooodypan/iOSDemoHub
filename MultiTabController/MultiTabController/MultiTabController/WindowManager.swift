@@ -31,7 +31,8 @@ struct WindowManager {
     }
 
     private static func topViewController(base: UIViewController? = nil) -> UIViewController? {
-        let base = base ?? UIApplication.shared.keyWindow?.rootViewController
+        // 取当前最顶层窗口的根控制器，再层层剥开导航/标签/模态
+        let base = base ?? keyWindow()?.rootViewController
         if let nav = base as? UINavigationController {
             return topViewController(base: nav.visibleViewController)
         }
@@ -43,6 +44,22 @@ struct WindowManager {
         }
         return base
     }
+
+    // 获取当前 keyWindow。
+    // 传统（非 Scene）生命周期里用 UIApplication.shared.keyWindow；
+    // Mac Catalyst 里 keyWindow 不可用，要从 connectedScenes 取窗口，所以按平台区分。
+    #if targetEnvironment(macCatalyst)
+    private static func keyWindow() -> UIWindow? {
+        return UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows
+            .first { $0.isKeyWindow }
+    }
+    #else
+    private static func keyWindow() -> UIWindow? {
+        return UIApplication.shared.keyWindow
+    }
+    #endif
 }
 
 // MARK: - NewWindowViewController

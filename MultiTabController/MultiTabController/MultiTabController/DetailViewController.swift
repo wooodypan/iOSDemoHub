@@ -17,12 +17,22 @@ class DetailViewController: UIViewController {
     private let placeholderLabel = UILabel()
     private var actionStackView: UIStackView!
 
-//重写init方法
-init(article: Article? = nil) {
-    super.init(nibName: nil, bundle: nil)
-    currentArticle = article
-}
-    
+    // 重写父类的指定初始化方法。
+    // 关键点：UIViewController 的便利初始化方法 init() 只有在“本类实现了父类的所有指定初始化方法”时才会被继承。
+    // 这里我们重写了 init(nibName:bundle:)，于是 UIViewController() 这种无参初始化也被继承下来，
+    // 否则外部直接调用 DetailViewController() 会编译报错（提示缺少 article 参数）。
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+    }
+
+    // 便捷初始化：可以传入一篇文章（可选），方便外部直接创建并展示内容。
+    convenience init(article: Article? = nil) {
+        // 先调用上面的指定初始化完成基础初始化
+        self.init(nibName: nil, bundle: nil)
+        // 初始化完成后再保存文章数据
+        self.currentArticle = article
+    }
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }

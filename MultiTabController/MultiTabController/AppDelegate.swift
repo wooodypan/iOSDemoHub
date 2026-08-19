@@ -7,30 +7,28 @@
 
 import UIKit
 
+// @main 标记应用入口。
+// 本工程刻意不使用 UISceneDelegate（无 Scene 生命周期），
+// 因此在 AppDelegate 里手动创建 UIWindow，并把 RootContainerViewController 设为根控制器。
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
-
+    // 必须持有 window：系统在启动完成后会通过 KVC 把窗口赋值到这里
+    var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+
+        // 1. 创建窗口（传统生命周期，由我们自行管理）
+        window = UIWindow(frame: UIScreen.main.bounds)
+
+        // 2. 把 RootContainerViewController 作为根控制器。
+        //    RootContainerViewController 内部会根据设备类型（iPhone / iPad / Mac）
+        //    自动选择“TabBar 布局”或“可新建多 Tab 的分屏浏览器布局”。
+        window?.rootViewController = RootContainerViewController()
+
+        // 3. 让窗口成为主窗口并显示出来
+        window?.makeKeyAndVisible()
+
         return true
     }
-
-    // MARK: UISceneSession Lifecycle
-
-    func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-        // Called when a new scene session is being created.
-        // Use this method to select a configuration to create the new scene with.
-        return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
-    }
-
-    func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {
-        // Called when the user discards a scene session.
-        // If any sessions were discarded while the application was not running, this will be called shortly after application:didFinishLaunchingWithOptions.
-        // Use this method to release any resources that were specific to the discarded scenes, as they will not return.
-    }
-
-
 }
-
