@@ -4,11 +4,23 @@ import UIKit
 // 用 addChild 手动实现左右分屏：
 //   左侧：UITabBarController（内含2个 NavigationController+ListVC）
 //   右侧：DetailViewController
+// 本控制器不再自己处理“选中文章”的业务逻辑，而是把事件转发给 BrowserTabManagerViewController：
+//   - onArticlePreviewSelected：左侧列表“单击”（预览）
+//   - onArticleOpenSelected：左侧列表“双击”（正式打开）
+//   - onTabPinned：右侧详情被编辑（输入备注）时，把当前 Tab 固定为正式 Tab
 class CustomSplitViewController: UIViewController {
 
-    // 回调：用于通知父容器（BrowserTabManager）打开新 Tab 或新窗口
+    // 回调：通知父容器（BrowserTabManager）
+    var onArticlePreviewSelected: ((Article) -> Void)?   // 单击：预览
+    var onArticleOpenSelected: ((Article) -> Void)?      // 双击：正式打开
     var onOpenNewTab: ((Article) -> Void)?
     var onOpenNewWindow: ((Article) -> Void)?
+    // 详情被编辑时回调：true=已编辑（固定为正式Tab），false=已清空
+    var onTabPinned: ((Bool) -> Void)?
+
+    // 关键 Bool 属性：当前这个分屏（Tab）是否已被“固定”。
+    // 当右侧详情输入框输入文字时会被设为 true；清空则变回 false。
+    var isPinned: Bool = false
 
     private let leftWidth: CGFloat = 320
     private let dividerWidth: CGFloat = 1
@@ -74,8 +86,12 @@ class CustomSplitViewController: UIViewController {
 
         // Tab 1: Tech 文章列表
         let techListVC = ArticleListViewController(articles: DataStore.techArticles, title: "Tech")
+        // 单击 -> 预览；双击 -> 正式打开（转发给父容器 BrowserTabManager 决定如何建 Tab）
         techListVC.onArticleSelected = { [weak self] article in
-            self?.handleArticleSelected(article)
+            self?.onArticlePreviewSelected?(article)
+        }
+        techListVC.onArticleDoubleSelected = { [weak self] article in
+            self?.onArticleOpenSelected?(article)
         }
         let techNav = UINavigationController(rootViewController: techListVC)
         techNav.tabBarItem = UITabBarItem(title: "Tech", image: UIImage(systemName: "laptopcomputer"), tag: 0)
@@ -83,7 +99,10 @@ class CustomSplitViewController: UIViewController {
         // Tab 2: News 文章列表
         let newsListVC = ArticleListViewController(articles: DataStore.newsArticles, title: "News")
         newsListVC.onArticleSelected = { [weak self] article in
-            self?.handleArticleSelected(article)
+            self?.onArticlePreviewSelected?(article)
+        }
+        newsListVC.onArticleDoubleSelected = { [weak self] article in
+            self?.onArticleOpenSelected?(article)
         }
         let newsNav = UINavigationController(rootViewController: newsListVC)
         newsNav.tabBarItem = UITabBarItem(title: "News", image: UIImage(systemName: "newspaper"), tag: 1)
@@ -114,6 +133,11 @@ class CustomSplitViewController: UIViewController {
         detail.onOpenNewWindow = { [weak self] article in
             self?.onOpenNewWindow?(article)
         }
+        // 详情备注框被编辑时：更新本分屏的 isPinned，并通知父容器固定当前 Tab
+        detail.onEditStateChanged = { [weak self] hasText in
+            self?.isPinned = hasText
+            self?.onTabPinned?(hasText)
+        }
         detailVC = detail
 
         addChild(detail)
@@ -130,25 +154,8 @@ class CustomSplitViewController: UIViewController {
 
     // MARK: - Article Selection Handler
 
-    private func handleArticleSelected(_ article: Article) {
-        detailVC.configure(with: article)
-        // 通知 BrowserTabManager 更新 tab 标题
-        if let manager = findBrowserTabManager() {
-            manager.updateActiveTabTitle(article.title)
-        }
-    }
-
     /// 从外部（新 Tab 打开时）直接设置详情
     func showDetail(article: Article) {
         detailVC?.configure(with: article)
-    }
-
-    private func findBrowserTabManager() -> BrowserTabManagerViewController? {
-        var p = parent
-        while p != nil {
-            if let mgr = p as? BrowserTabManagerViewController { return mgr }
-            p = p?.parent
-        }
-        return nil
     }
 }

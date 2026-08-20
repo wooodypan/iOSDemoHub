@@ -24,7 +24,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // 2. 把 RootContainerViewController 作为根控制器。
         //    RootContainerViewController 内部会根据设备类型（iPhone / iPad / Mac）
         //    自动选择“TabBar 布局”或“可新建多 Tab 的分屏浏览器布局”。
-        window?.rootViewController = RootContainerViewController()
+        let techListVC = ArticleListViewController(articles: DataStore.techArticles, title: "Tech")
+        let techNav = UINavigationController(rootViewController: techListVC)
+
+        let newsListVC = ArticleListViewController(articles: DataStore.newsArticles, title: "News")
+        let newsNav = UINavigationController(rootViewController: newsListVC)
+        window?.rootViewController = RootContainerViewController(viewControllers: [techNav,newsNav], titles: ["Tech","News"])
 
         // 3. 让窗口成为主窗口并显示出来
         window?.makeKeyAndVisible()

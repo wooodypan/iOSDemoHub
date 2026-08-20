@@ -6,16 +6,23 @@ class BrowserTab {
     var title: String
     // 保活的 SplitViewController（持有强引用即保活）
     let splitVC: CustomSplitViewController
+    // 是否为“预览 Tab”（可复用）。false 表示正式 Tab（不复用）。
+    var isPreview: Bool
 
-    init(title: String, splitVC: CustomSplitViewController) {
+    init(title: String, splitVC: CustomSplitViewController, isPreview: Bool = true) {
         self.id = UUID()
         self.title = title
         self.splitVC = splitVC
+        self.isPreview = isPreview
     }
 }
 
 // MARK: - BrowserTabManagerViewController
-// iPad/Mac 上的多 Tab 容器，顶部是 Tab 栏，下方是内容区
+// iPad/Mac 上的多 Tab 容器，顶部是 Tab 栏，下方是内容区。
+// 这里实现 VS Code 的“复用 Tab 策略”：
+//   - 单击文章 = 预览：复用已有的 Preview Tab；没有则新建一个 Preview Tab。
+//   - 双击文章 / “在新Tab打开” = 正式 Tab：永远新建，且不会被后续单击替换。
+//   - 在详情里输入备注（编辑） = 把当前 Preview Tab 固定为正式 Tab，之后再单击就会新建而不是覆盖。
 class BrowserTabManagerViewController: UIViewController {
 
     private var tabs: [BrowserTab] = []
@@ -34,7 +41,8 @@ class BrowserTabManagerViewController: UIViewController {
         view.backgroundColor = .systemBackground
         setupTabBarCollectionView()
         setupContentContainer()
-        openNewTab(article: nil, animated: false)
+        // 启动时先建一个空的 Preview Tab（可被首次单击复用）
+        openNewTab(article: nil, isPreview: true, animated: false)
     }
 
     // MARK: - Setup
@@ -77,11 +85,12 @@ class BrowserTabManagerViewController: UIViewController {
 
     // MARK: - Tab Management
 
-    /// 打开一个新 Tab，可以带初始文章（来自"在新Tab中打开"）
-    func openNewTab(article: Article?, animated: Bool = true) {
+    /// 打开一个新 Tab。
+    /// - parameter isPreview: true=预览 Tab（可复用）；false=正式 Tab（不复用）。
+    func openNewTab(article: Article?, isPreview: Bool = true, animated: Bool = true) {
         let splitVC = makeSplitViewController(initialArticle: article)
         let title = article?.title ?? "New Tab"
-        let tab = BrowserTab(title: title, splitVC: splitVC)
+        let tab = BrowserTab(title: title, splitVC: splitVC, isPreview: isPreview)
         tabs.append(tab)
         let newIndex = tabs.count - 1
         switchToTab(at: newIndex, animated: animated)
@@ -125,13 +134,32 @@ class BrowserTabManagerViewController: UIViewController {
 
     private func makeSplitViewController(initialArticle: Article?) -> CustomSplitViewController {
         let splitVC = CustomSplitViewController()
+
+        // 左侧列表“单击” -> 预览策略（复用/新建 Preview Tab）
+        splitVC.onArticlePreviewSelected = { [weak self] article in
+            self?.handleArticlePreviewSelected(article)
+        }
+        // 左侧列表“双击” -> 正式打开（永远新建正式 Tab）
+        splitVC.onArticleOpenSelected = { [weak self] article in
+            self?.openNewTab(article: article, isPreview: false)
+        }
+        // “在新 Tab 中打开”按钮 -> 新建正式 Tab
         splitVC.onOpenNewTab = { [weak self] article in
-            self?.openNewTab(article: article)
+            self?.openNewTab(article: article, isPreview: false)
         }
         splitVC.onOpenNewWindow = { article in
             // 打开新窗口（在 Mac Catalyst / iPadOS 13+ 支持多窗口时可用）
             WindowManager.openNewWindow(article: article)
         }
+        // 详情备注被编辑 -> 把当前这个分屏对应的 Tab 固定为正式 Tab
+        splitVC.onTabPinned = { [weak self, weak splitVC] pinned in
+            guard let self, let splitVC else { return }
+            if let idx = self.tabs.firstIndex(where: { $0.splitVC === splitVC }) {
+                self.tabs[idx].isPreview = !pinned
+                self.tabBarCollectionView.reloadItems(at: [IndexPath(item: idx, section: 0)])
+            }
+        }
+
         if let article = initialArticle {
             // 延迟一帧让 splitVC 完成布局后再设置详情
             DispatchQueue.main.async {
@@ -139,6 +167,22 @@ class BrowserTabManagerViewController: UIViewController {
             }
         }
         return splitVC
+    }
+
+    // MARK: - 预览策略核心
+
+    /// 单击文章时的处理（对应 VS Code 的 Preview Tab）：
+    /// 若已存在 Preview Tab，则复用它（加载文章 + 切过去）；否则新建一个 Preview Tab。
+    private func handleArticlePreviewSelected(_ article: Article) {
+        if let previewIdx = tabs.firstIndex(where: { $0.isPreview }) {
+            // 复用已有的 Preview Tab
+            tabs[previewIdx].splitVC.showDetail(article: article)
+            tabs[previewIdx].title = article.title
+            switchToTab(at: previewIdx)
+        } else {
+            // 没有 Preview Tab（当前都是正式 Tab）-> 新建一个 Preview Tab
+            openNewTab(article: article, isPreview: true)
+        }
     }
 
     /// 从外部更新当前激活 tab 的标题（当用户在左侧选中文章时）
@@ -161,7 +205,7 @@ extension BrowserTabManagerViewController: UICollectionViewDataSource, UICollect
         if indexPath.item < tabs.count {
             let tab = tabs[indexPath.item]
             let isActive = indexPath.item == activeTabIndex
-            cell.configure(title: tab.title, isActive: isActive, isAddButton: false)
+            cell.configure(title: tab.title, isActive: isActive, isAddButton: false, isPreview: tab.isPreview)
             cell.onClose = { [weak self] in
                 self?.closeTab(at: indexPath.item)
             }
@@ -176,7 +220,8 @@ extension BrowserTabManagerViewController: UICollectionViewDataSource, UICollect
         if indexPath.item < tabs.count {
             switchToTab(at: indexPath.item)
         } else {
-            openNewTab(article: nil)
+            // “+”按钮：新建一个正式 Tab
+            openNewTab(article: nil, isPreview: false)
         }
     }
 }
@@ -207,11 +252,6 @@ class TabBarCell: UICollectionViewCell {
 
         closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
         closeButton.tintColor = .secondaryLabel
-        if #available(iOS 13.0, *) {
-//            var config = UIButton.Configuration.plain()
-//            config.contentInsets = NSDirectionalEdgeInsets(top: 4, leading: 4, bottom: 4, trailing: 4)
-//            closeButton.configuration = config
-        }
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         closeButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
 
@@ -230,7 +270,7 @@ class TabBarCell: UICollectionViewCell {
         ])
     }
 
-    func configure(title: String, isActive: Bool, isAddButton: Bool) {
+    func configure(title: String, isActive: Bool, isAddButton: Bool, isPreview: Bool = false) {
         titleLabel.text = title
         closeButton.isHidden = isAddButton
         backgroundColor = isActive ? .systemBackground : .secondarySystemBackground
@@ -238,7 +278,9 @@ class TabBarCell: UICollectionViewCell {
         if isAddButton {
             titleLabel.font = UIFont.systemFont(ofSize: 20, weight: .light)
         } else {
-            titleLabel.font = UIFont.systemFont(ofSize: 13)
+            // 预览 Tab 用斜体 + 更浅颜色，强调“可复用”状态；
+            // 正式 Tab 用正常字体，强调“已固定/不复用”。
+            titleLabel.font = isPreview ? UIFont.italicSystemFont(ofSize: 13) : UIFont.systemFont(ofSize: 13)
         }
     }
 
