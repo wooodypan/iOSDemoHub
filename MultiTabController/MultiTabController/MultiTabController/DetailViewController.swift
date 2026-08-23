@@ -54,6 +54,10 @@ class DetailViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         setupViews()
+        // 视图加载完成后，把 configure 里保存的文章数据渲染到界面上。
+        // （作为子控制器创建时，configure 可能在 viewDidLoad 之前被调用，
+        //   此时控件还没创建，所以那时只存数据、不碰 UI。）
+        applyArticleToUI()
     }
 
     // MARK: - Setup
@@ -208,14 +212,29 @@ class DetailViewController: UIViewController {
 
     func configure(with article: Article) {
         currentArticle = article
+
+        // 切换文章时，把编辑状态重置为 false（不触发编辑回调）
+        isEdited = false
+
+        // 把数据渲染到界面。关键点：DetailViewController 在作为子控制器创建时，
+        // 可能还没触发 viewDidLoad（视图尚未加载），此时直接访问 titleLabel /
+        // actionStackView 等控件会闪退（隐式解包的 Optional 为 nil）。
+        // 所以这里先只保存数据，真正更新 UI 交给 applyArticleToUI() 处理，
+        // 它内部会用 isViewLoaded 判断视图是否已就绪。
+        applyArticleToUI()
+    }
+
+    // 把保存的文章数据更新到界面控件上。
+    // 用 isViewLoaded 守卫：只有视图已经加载（viewDidLoad 跑过、控件已创建），
+    // 才真正去设置控件；否则只保存数据，等 viewDidLoad 末尾再调用本方法。
+    private func applyArticleToUI() {
+        guard isViewLoaded, let article = currentArticle else { return }
+
         categoryLabel.text = article.category.uppercased()
         titleLabel.text = article.title
         bodyLabel.text = article.body
         title = article.title
         updateVisibility(hasArticle: true)
-
-        // 切换文章时，把编辑状态重置为 false（不触发编辑回调）
-        isEdited = false
 
         // iPhone 下，"新Tab"/"新窗口"按钮隐藏（无意义）
         actionStackView.isHidden = (DeviceHelper.currentLayout == .iPhone)

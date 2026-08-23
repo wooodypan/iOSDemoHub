@@ -5,18 +5,16 @@ import UIKit
 // 我们用手势区分“单击”和“双击”，从而对应 VS Code 的 Tab 策略：
 //   - 单击 = 预览（可复用）
 //   - 双击 = 正式打开（不复用）
-// iPad/Mac 分屏时通过回调通知父 VC；iPhone 时仍 push 详情页。
+// 但列表页不再直接处理“怎么打开”，而是通过 ArticleOpenRouting 协议把意图发出去，
+// 具体落到 iPhone 的导航栈还是 iPad 的分栏，由 router 决定（模仿 NewsSplitDemo 的解耦思路）。
 class ArticleListViewController: UIViewController {
 
     private let articles: [Article]
     private let pageTitle: String
     private var tableView: UITableView!
 
-    // iPad/Mac 分屏下：
-    // 单击文章 -> 以“预览”方式打开（回调给父 VC 去复用 Preview Tab）
-    var onArticleSelected: ((Article) -> Void)?
-    // 双击文章 -> 以“正式 Tab”方式打开（不复用，永远新建）
-    var onArticleDoubleSelected: ((Article) -> Void)?
+    // 路由协议：列表只发“打开文章”的意图，不关心设备环境。
+    var router: ArticleOpenRouting?
 
     init(articles: [Article], title: String) {
         self.articles = articles
@@ -72,14 +70,11 @@ class ArticleListViewController: UIViewController {
         guard let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)) else { return }
         let article = articles[indexPath.row]
 
-        switch DeviceHelper.currentLayout {
-        case .iPadOrMac:
-            // 分屏：单击 = 预览（交给父 VC 决定复用还是新建 Preview Tab）
-            onArticleSelected?(article)
-        case .iPhone:
-            // iPhone：仍是 push 详情页
-            pushDetail(for: article)
-        }
+        // 把“想怎么打开”的意图交给 router：
+        //   iPad/Mac -> 预览（复用预览槽位）
+        //   iPhone   -> 直接开新 Tab（push 详情）
+        let mode: ArticleOpenMode = (DeviceHelper.currentLayout == .iPadOrMac) ? .preview : .newTab
+        router?.openArticle(article, mode: mode)
     }
 
     @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
@@ -89,16 +84,7 @@ class ArticleListViewController: UIViewController {
         guard let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)) else { return }
         let article = articles[indexPath.row]
         // 双击 = 正式 Tab（不复用）
-        onArticleDoubleSelected?(article)
-    }
-
-    private func pushDetail(for article: Article) {
-        let detailVC = DetailViewController()
-        // iPhone 不需要“新Tab/新窗口”按钮（功能降级）
-        detailVC.onOpenNewTab = nil
-        detailVC.onOpenNewWindow = nil
-        detailVC.configure(with: article)
-        navigationController?.pushViewController(detailVC, animated: true)
+        router?.openArticle(article, mode: .newTab)
     }
 }
 

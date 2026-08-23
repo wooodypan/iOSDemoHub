@@ -23,7 +23,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         // 2. 由 RootBuilder 根据设备直接产出根控制器：
         //    iPhone    -> PPTabBarController（Tech / News）；
-        //    iPad / Mac -> BrowserTabManagerViewController（可新建多 Tab 的分屏浏览器）。
+        //    iPad / Mac -> SplitContainerViewController（左列表 + 右 DetailHostViewController 多 Tab 详情宿主）。
         window?.rootViewController = RootBuilder.makeRoot()
 
         // 3. 让窗口成为主窗口并显示出来

@@ -1,0 +1,260 @@
+import UIKit
+
+// 在 Mac Catalyst 下导入 AppKit，用于把鼠标光标设为“左右调整大小”。
+#if targetEnvironment(macCatalyst)
+import AppKit
+#endif
+
+// MARK: - SplitContainerViewController
+// 模仿 NewsSplitDemo 的 SplitContainerViewController：iPad / Mac Catalyst 的根控制器。
+// 左栏 = PPTabBarController（Tech / News 两个列表，各自装上 SplitArticleRouter）；
+// 右栏 = 一个 DetailHostViewController（右侧多 Tab 详情宿主，承载 VS Code 预览/正式策略）。
+// 这样“浏览器式多 Tab”被下沉到右侧详情宿主里，左栏在切 Tab 时始终不动。
+final class SplitContainerViewController: UIViewController {
+
+    private let leftContainerView = UIView()
+    private let rightContainerView = UIView()
+
+    // 分割线：dividerHandleView 是较宽的“抓取区”（透明，方便鼠标/手指命中），
+    // 中间的 dividerLineView 才是真正可见的细线；hoverGripView 是悬浮时出现的“拖动标志”。
+    private let dividerHandleView = UIView()
+    private let dividerLineView = UIView()
+    private let hoverGripView = UIView()
+
+    // 左栏宽度约束（存为属性，拖动时动态修改它的 constant 即可改变左右比例）。
+    private var leftWidthConstraint: NSLayoutConstraint!
+
+    // 拖动时的临时状态：记录起始宽度与指针起始位置，按位移增量调整。
+    private var dragStartLeftWidth: CGFloat = 0
+    private var dragStartLocationX: CGFloat = 0
+
+    // 分割线相关常量。
+    private let dividerHitWidth: CGFloat = 12   // 抓取区宽度（命中范围，越大越好抓）
+    private let minLeftWidth: CGFloat = 220     // 左栏最小宽度
+    private let minRightWidth: CGFloat = 320    // 右栏最小宽度
+
+    // 右侧唯一的详情宿主（多 Tab 都在它里面）。
+    private let detailHost = DetailHostViewController()
+
+    // 分栏路由：列表发出的“打开文章”意图由它转交给右侧 detailHost。
+    private let splitRouter: SplitArticleRouter
+
+    // 左栏的导航控制器（包住 PPTabBarController，提供导航条）。
+    private let leftNavigationController: UINavigationController
+
+    init() {
+        let router = SplitArticleRouter()
+        self.splitRouter = router
+
+        // 左栏两个分类：Tech / News，各自一个列表，装上同一个分栏路由。
+        let categories: [(title: String, articles: [Article])] = [
+            ("Tech", DataStore.techArticles),
+            ("News", DataStore.newsArticles)
+        ]
+        let listControllers = categories.map { category in
+            let list = ArticleListViewController(articles: category.articles, title: category.title)
+            list.router = router
+            return list
+        }
+        let buttonConfigurations = categories.map { category in
+            PPTabBarController.ButtonConfiguration(title: category.title, image: nil)
+        }
+        let sidebarController = PPTabBarController(
+            viewControllers: listControllers,
+            buttonConfigurations: buttonConfigurations,
+            initialIndex: 0
+        )
+
+        self.leftNavigationController = UINavigationController(rootViewController: sidebarController)
+
+        super.init(nibName: nil, bundle: nil)
+
+        // 把“打开文章”解析到右侧的详情宿主。
+        router.detailHostResolver = { [weak self] _ in
+            self?.detailHost
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .white
+        setupLayout()
+        embed(leftNavigationController, in: leftContainerView)
+        embed(detailHost, in: rightContainerView)
+    }
+
+    // MARK: - 布局
+
+    private func setupLayout() {
+        [leftContainerView, rightContainerView, dividerHandleView].forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+        }
+
+        leftContainerView.backgroundColor = .white
+        rightContainerView.backgroundColor = .white
+        // 抓取区本身透明，真正的“线”由里面的 dividerLineView 画出。
+        dividerHandleView.backgroundColor = .clear
+
+        // 可见细线：放在抓取区正中央，宽 1pt。
+        dividerLineView.translatesAutoresizingMaskIntoConstraints = false
+        dividerLineView.backgroundColor = UIColor(white: 0.85, alpha: 1.0)
+        dividerHandleView.addSubview(dividerLineView)
+
+        // 悬浮“拖动标志”：三个小圆点，平时隐藏，鼠标移到分割线上才出现。
+        setupGrip()
+
+        view.addSubview(leftContainerView)
+        view.addSubview(dividerHandleView)
+        view.addSubview(rightContainerView)
+
+        // 关键：把左栏宽度约束存成属性，拖动时改它的 constant。
+        leftWidthConstraint = leftContainerView.widthAnchor.constraint(equalToConstant: 320)
+
+        NSLayoutConstraint.activate([
+            leftContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            leftContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            leftContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            leftWidthConstraint,
+
+            dividerHandleView.topAnchor.constraint(equalTo: view.topAnchor),
+            dividerHandleView.leadingAnchor.constraint(equalTo: leftContainerView.trailingAnchor),
+            dividerHandleView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            dividerHandleView.widthAnchor.constraint(equalToConstant: dividerHitWidth),
+
+            rightContainerView.topAnchor.constraint(equalTo: view.topAnchor),
+            rightContainerView.leadingAnchor.constraint(equalTo: dividerHandleView.trailingAnchor),
+            rightContainerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            rightContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        // 细线垂直撑满、水平居中（看起来就是一条细分隔线）。
+        NSLayoutConstraint.activate([
+            dividerLineView.centerXAnchor.constraint(equalTo: dividerHandleView.centerXAnchor),
+            dividerLineView.topAnchor.constraint(equalTo: dividerHandleView.topAnchor),
+            dividerLineView.bottomAnchor.constraint(equalTo: dividerHandleView.bottomAnchor),
+            dividerLineView.widthAnchor.constraint(equalToConstant: 1)
+        ])
+
+        // 拖动标志（小圆点）整体居中在抓取区。
+        NSLayoutConstraint.activate([
+            hoverGripView.centerXAnchor.constraint(equalTo: dividerHandleView.centerXAnchor),
+            hoverGripView.centerYAnchor.constraint(equalTo: dividerHandleView.centerYAnchor)
+        ])
+
+        // 绑定拖动 + 悬浮手势。
+        setupDividerInteractions()
+    }
+
+    // 在抓取区中央放三个小圆点，作为“可以拖动”的视觉提示。
+    private func setupGrip() {
+        hoverGripView.translatesAutoresizingMaskIntoConstraints = false
+        hoverGripView.backgroundColor = .clear
+        hoverGripView.isHidden = true   // 平时隐藏，悬浮时才显示
+        dividerHandleView.addSubview(hoverGripView)
+
+        let dotSize: CGFloat = 4
+        let spacing: CGFloat = 5
+        var previous: UIView?
+        for _ in 0..<3 {
+            let dot = UIView()
+            dot.translatesAutoresizingMaskIntoConstraints = false
+            dot.backgroundColor = UIColor(white: 0.55, alpha: 1.0)
+            dot.layer.cornerRadius = dotSize / 2
+            hoverGripView.addSubview(dot)
+            NSLayoutConstraint.activate([
+                dot.topAnchor.constraint(equalTo: hoverGripView.topAnchor),
+                dot.bottomAnchor.constraint(equalTo: hoverGripView.bottomAnchor),
+                dot.widthAnchor.constraint(equalToConstant: dotSize),
+                dot.heightAnchor.constraint(equalToConstant: dotSize)
+            ])
+            if let prev = previous {
+                dot.leadingAnchor.constraint(equalTo: prev.trailingAnchor, constant: spacing).isActive = true
+            } else {
+                dot.leadingAnchor.constraint(equalTo: hoverGripView.leadingAnchor).isActive = true
+            }
+            previous = dot
+        }
+        if let last = previous {
+            last.trailingAnchor.constraint(equalTo: hoverGripView.trailingAnchor).isActive = true
+        }
+        hoverGripView.heightAnchor.constraint(equalToConstant: dotSize).isActive = true
+    }
+
+    // 给分割线绑定：1) 拖动手势；2) 悬浮手势（iOS 13.4+ 指针/鼠标）。
+    private func setupDividerInteractions() {
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        dividerHandleView.addGestureRecognizer(pan)
+
+        if #available(iOS 13.4, *) {
+            let hover = UIHoverGestureRecognizer(target: self, action: #selector(handleHover(_:)))
+            dividerHandleView.addGestureRecognizer(hover)
+        }
+    }
+
+    // 拖动分割线：按手指/指针的水平位移，实时改变左栏宽度（带上下限钳制）。
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        switch gesture.state {
+        case .began:
+            // 记录起点：起始宽度 + 起始位置。
+            dragStartLeftWidth = leftWidthConstraint.constant
+            dragStartLocationX = gesture.location(in: view).x
+            updateDividerAppearance(hovering: true)
+        case .changed:
+            let currentX = gesture.location(in: view).x
+            let delta = currentX - dragStartLocationX
+            leftWidthConstraint.constant = clampedLeftWidth(dragStartLeftWidth + delta)
+        case .ended, .cancelled, .failed:
+            updateDividerAppearance(hovering: false)
+        default:
+            break
+        }
+    }
+
+    // 悬浮分割线：出现“拖动标志”，并在 Mac 上把鼠标光标设为左右调整大小。
+    @available(iOS 13.4, *)
+    @objc private func handleHover(_ gesture: UIHoverGestureRecognizer) {
+        let isHovering = (gesture.state == .began || gesture.state == .changed)
+        updateDividerAppearance(hovering: isHovering)
+
+        #if targetEnvironment(macCatalyst)
+        if isHovering {
+            NSCursor.resizeLeftRight.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+        #endif
+    }
+
+    // 根据是否悬浮，切换分割线颜色与小圆点显隐。
+    private func updateDividerAppearance(hovering: Bool) {
+        dividerLineView.backgroundColor = hovering
+            ? UIColor.systemBlue
+            : UIColor(white: 0.85, alpha: 1.0)
+        hoverGripView.isHidden = !hovering
+    }
+
+    // 把左栏宽度钳制在 [minLeftWidth, 视图可用宽度 - 分割线 - minRightWidth] 之间。
+    private func clampedLeftWidth(_ width: CGFloat) -> CGFloat {
+        let maxLeft = view.bounds.width - dividerHitWidth - minRightWidth
+        return max(minLeftWidth, min(width, maxLeft))
+    }
+
+    // 复用的“嵌入子控制器”辅助方法（模仿 NewsSplitDemo 的 embed）。
+    private func embed(_ childViewController: UIViewController, in containerView: UIView) {
+        addChild(childViewController)
+        childViewController.view.translatesAutoresizingMaskIntoConstraints = false
+        containerView.addSubview(childViewController.view)
+        NSLayoutConstraint.activate([
+            childViewController.view.topAnchor.constraint(equalTo: containerView.topAnchor),
+            childViewController.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
+            childViewController.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
+            childViewController.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
+        ])
+        childViewController.didMove(toParent: self)
+    }
+}

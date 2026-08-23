@@ -1,6 +1,6 @@
 # MultiTabController 从 0 构建全记录
 
-> 一份"施工日志 + 教程"，讲清楚这个支持 **iPhone 单 TabBar、iPad/Mac 浏览器式多 Tab 分屏** 的 iOS App 是怎么一步步搭起来的。
+> 一份"施工日志 + 教程"，讲清楚这个支持 **iPhone 单 TabBar、iPad/Mac 左右分栏 + 右侧浏览器式多 Tab 详情宿主** 的 iOS App 是怎么一步步搭起来的。
 > 目标读者：会一点 Swift/UIKit、想搞懂"不用 Storyboard、不用 SceneDelegate、纯代码做多 Tab 容器"的同学。
 
 ---
@@ -16,10 +16,10 @@
    - 阶段三：设备分发 RootBuilder（工厂）
    - 阶段四：列表页 ArticleListViewController
    - 阶段五：详情页 DetailViewController（含按钮示例）
-   - 阶段六：iPad/Mac 左右分屏 CustomSplitViewController
-   - 阶段七：浏览器式多 Tab 管理器
+   - 阶段六：iPad/Mac 左右分栏 SplitContainerViewController + 协议化路由
+   - 阶段七：右侧详情宿主 DetailHostViewController（多 Tab 下沉）
    - 阶段八：抽出根控制器工厂 + TabBarBuilder 组件化
-   - 阶段九：VS Code 式"复用 Tab"策略
+   - 阶段九：VS Code 式"复用 Tab"策略（落于详情宿主）
    - 阶段十：新窗口（模态，不保活）
 5. [核心设计模式](#5-核心设计模式)
 6. [踩过的坑](#6-踩过的坑)
@@ -34,7 +34,7 @@
 需求来自 `README.md`，一句话概括：**一个"类浏览器"的多标签阅读器**。
 
 - **iPhone**：底部 `PPTabBarController`，Tech / News 两个列表 Tab，点列表行 `push` 进详情。
-- **iPad / Mac Catalyst**：顶部一条"浏览器式"Tab 栏（`UICollectionView` 做的），每个 Tab 是一个左右分屏（左列表、右详情），可以"+ 新建"、"× 关闭"，**切换 Tab 不销毁内容（保活）**。
+- **iPad / Mac Catalyst**：左右分栏，左栏是 `PPTabBarController`（Tech/News 列表），右栏是一个"浏览器式多 Tab 详情宿主"`DetailHostViewController`（`UICollectionView` Tab 条 + 内容区），可以"× 关闭"、**切换 Tab 不销毁内容（保活）**。VS Code 式预览/正式策略落在这个右侧宿主里。
 - **关键约束**：不使用 `UISceneDelegate`；用最朴素的 `addChild(_:)` 手动做视图控制器嵌套；支持 Mac Catalyst。
 
 ---
@@ -64,11 +64,11 @@ AppDelegate（@main，手动创建 UIWindow）
          │      └── News:  UINavigationController → ArticleListViewController
          │           点行 → pushViewController(DetailViewController)
          │
-         └── [iPad/Mac]  BrowserTabManagerViewController（直接当 root）
-                ├── 顶部 Tab 栏（UICollectionView）：每个 item 是一个 BrowserTab
-                └── 内容区：当前激活 Tab 的 CustomSplitViewController（addChild）
-                       ├── 左侧 leftContainerView → PPTabBarController（Tech/News 列表）
-                       └── 右侧 rightContainerView → DetailViewController（addChild）
+         └── [iPad/Mac]  SplitContainerViewController（直接当 root，左右分栏）
+                ├── 左栏 leftContainerView → PPTabBarController（Tech/News 列表，router=splitRouter）
+                └── 右栏 rightContainerView → DetailHostViewController（addChild）
+                       ├── 顶部 Tab 条（UICollectionView）：每个 item 是一个详情 Tab
+                       └── 内容区：当前激活 Tab 的 DetailViewController（addChild，保活）
 ```
 
 核心思想：**一切嵌套都靠 `addChild` + `didMove(toParent:)` 手写容器**，不依赖 `UISplitViewController`/`UINavigationController` 的黑盒（当然列表外仍包了一层 `UINavigationController` 以便 iPhone push）。
@@ -151,7 +151,7 @@ enum RootBuilder {
     static func makeRoot() -> UIViewController {
         switch DeviceHelper.currentLayout {
         case .iPadOrMac:
-            return BrowserTabManagerViewController()          // iPad/Mac：直接当 root
+            return SplitContainerViewController()            // iPad/Mac：左列表 + 右 DetailHostViewController
         case .iPhone:
             let techNav = UINavigationController(
                 rootViewController: ArticleListViewController(articles: DataStore.techArticles, title: "Tech"))
@@ -217,91 +217,42 @@ var onEditStateChanged: ((Bool) -> Void)?
 
 > 用按钮而非输入框，能更直观地演示“点击 → Bool 变化 → 触发回调”的链路：`markAsEdited` 把 `isEdited` 置 `true`，`clearEdit` 置 `false`，两个事件都通过 `onEditStateChanged` 上报。
 
-### 阶段六：iPad/Mac 左右分屏 CustomSplitViewController
+### 阶段六：iPad/Mac 左右分栏 + 协议化路由
 
-不用 `UISplitViewController`，而是手写左右两个容器视图，用 `addChild` 把子控制器塞进去：
+iPad/Mac 的根控制器是 `SplitContainerViewController`：左栏 `PPTabBarController`（Tech/News 列表），右栏一个 `DetailHostViewController`。列表发出的"打开文章"不再直接耦合上层，而是通过 `ArticleOpenRouting` 协议（模仿 NewsSplitDemo 的 `ArticleOpenRouting`）把意图交给 router：
+
+- `ArticleListViewController` 只持有 `var router: ArticleOpenRouting?`，单击(iPad/Mac→`.preview` / iPhone→`.newTab`)、双击(iPad/Mac→`.newTab`)只发意图。
+- `PhoneArticleRouter`：iPhone 环境，`push` 详情页。
+- `SplitArticleRouter`：iPad/Mac 环境，把意图转交给右侧 `DetailHostViewController`。
 
 ```swift
-private let leftContainerView = UIView()
-private let rightContainerView = UIView()
+// SplitContainerViewController 里：左列表装上分栏路由，路由解析到右栏详情宿主
+let router = SplitArticleRouter()
+let list = ArticleListViewController(articles: DataStore.techArticles, title: "Tech")
+list.router = router
+router.detailHostResolver = { [weak self] _ in self?.detailHost }
+```
 
-private func setupLeftSide() {
-    let techNav = UINavigationController(rootViewController: techListVC)
-    let newsNav = UINavigationController(rootViewController: newsListVC)
-    // PPTabBarController 是自定义类：不读 tabBarItem，而是用 ButtonConfiguration 定义每个 Tab。
-    let tabBar = PPTabBarController(
-        viewControllers: [techNav, newsNav],
-        buttonConfigurations: [
-            .init(title: "Tech", image: UIImage(systemName: "laptopcomputer")),
-            .init(title: "News", image: UIImage(systemName: "newspaper"))
-        ]
-    )
-    addChild(tabBar)                       // ① 成为子控制器
-    leftContainerView.addSubview(tabBar.view)
-    tabBar.didMove(toParent: self)        // ② 通知完成添加
-}
+左栏用 `PPTabBarController`（自定义类，不读 tabBarItem，用 `ButtonConfiguration` 定义 Tab），右栏 `DetailHostViewController` 通过 `embed(_:in:)` 用 `addChild` 嵌入。
 
-private func setupRightSide() {
-    let detail = DetailViewController()
-    detail.onEditStateChanged = { [weak self] hasText in
-        self?.isPinned = hasText          // 把"已编辑"状态记到分屏上
-        self?.onTabPinned?(hasText)       // 转发给 Tab 管理器
-    }
-    addChild(detail)
-    rightContainerView.addSubview(detail.view)
-    detail.didMove(toParent: self)
+### 阶段七：右侧详情宿主 DetailHostViewController（多 Tab 下沉）
+
+把"浏览器式多 Tab"从顶层下沉到右侧详情宿主（模仿 NewsSplitDemo 的 `DetailHostViewController`）：`SplitContainerViewController` 只负责左右分栏，多 Tab 都在右栏的 `DetailHostViewController` 里。它的 Tab 是**一篇文章/一个 `DetailViewController`**（而不是一整个分屏），左栏在切 Tab 时始终不动。
+
+- **Tab 模型** `DetailTabItem`：持有 `DetailViewController` 的**强引用** → 切换 Tab 时只隐藏/显示 `view`，VC 不销毁 → **保活**。
+- **顶部 Tab 条**用 `UICollectionView` 实现（`DetailTabCell`：标题 + 关闭按钮）。
+- **切换 Tab**（`refreshUI`）：根据 `selectedTabID` 隐藏/显示各 `controller.view`，并把当前那个 `bringSubviewToFront`。
+
+```swift
+private struct DetailTabItem {
+    let id: String
+    var article: Article?
+    let controller: DetailViewController   // 强引用，保证状态不丢
+    var isPreview: Bool                    // 是否为可复用的预览 Tab
 }
 ```
 
-它的角色是**"事件中转站"**：把左侧列表的选中、右侧详情的编辑，都通过回调转发给 `BrowserTabManagerViewController`，自己不决定"建不建 Tab"。
-
-### 阶段七：浏览器式多 Tab 管理器
-
-`BrowserTabManagerViewController` 是 iPad/Mac 的核心。要点：
-
-- **Tab 模型** `BrowserTab`：持有 `CustomSplitViewController` 的**强引用** → 切换 Tab 时只移走 `view`，VC 不销毁 → **保活**。
-
-```swift
-class BrowserTab {
-    let id: UUID
-    var title: String
-    let splitVC: CustomSplitViewController   // 强引用，保证状态不丢
-    var isPreview: Bool                       // 阶段九新增：是否为可复用的预览 Tab
-    init(title: String, splitVC: CustomSplitViewController, isPreview: Bool = true) { ... }
-}
-```
-
-- **顶部 Tab 栏**用 `UICollectionView` 实现，最后一个 cell 是"+"。
-- **切换 Tab**（`switchToTab`）就是前面那套 `willMove/toParent` 移除旧、添加新。
-
-```swift
-func switchToTab(at index: Int, animated: Bool = true) {
-    guard index >= 0, index < tabs.count else { return }
-    activeTabIndex = index
-    let newVC = tabs[index].splitVC
-    if let current = currentChildVC {        // 移除旧的（只移 view，不销毁 VC）
-        current.willMove(toParent: nil)
-        current.view.removeFromSuperview()
-        current.removeFromParent()
-    }
-    addChild(newVC)                          // 添加新的
-    newVC.view.frame = contentContainerView.bounds
-    contentContainerView.addSubview(newVC.view)
-    newVC.didMove(toParent: self)
-    currentChildVC = newVC
-}
-```
-
-启动时默认开一个**空的预览 Tab**（可被首次单击复用）：
-
-```swift
-override func viewDidLoad() {
-    super.viewDidLoad()
-    setupTabBarCollectionView()
-    setupContentContainer()
-    openNewTab(article: nil, isPreview: true, animated: false)
-}
-```
+启动时空宿主，显示占位文案"← 请从左侧选择"；首次单击文章即创建第一个 Tab。
 
 ### 阶段八：抽出根控制器工厂 + TabBarBuilder 组件化
 
@@ -325,7 +276,7 @@ enum TabBarBuilder {
 }
 ```
 
-> 用法：想自定义就 `TabBarBuilder.build(viewControllers: [vc1, vc2], titles: ["A", "B"])`；`RootBuilder.makeRoot()` 在 iPhone 分支内部就是这么用的，iPad/Mac 则直接返回 `BrowserTabManagerViewController`。
+> 用法：想自定义就 `TabBarBuilder.build(viewControllers: [vc1, vc2], titles: ["A", "B"])`；`RootBuilder.makeRoot()` 在 iPhone 分支内部就是这么用的，iPad/Mac 则直接返回 `SplitContainerViewController`。
 
 这样层级从 `Window → 容器VC → 目标VC` 扁平成 `Window → 目标VC`，AppDelegate 也保持瘦，组件化能力还留在 `TabBarBuilder` 里可单独复用。
 
@@ -333,24 +284,24 @@ enum TabBarBuilder {
 
 参考 `VS Code复用tab策略.md`：单击=Preview（可复用，占用同一个 Preview 槽位）；双击=正式 Tab（不复用）；**编辑 Preview 内容会把它固定为正式 Tab**。
 
-原项目不满足（没有预览/正式之分），改造后逻辑在 `BrowserTabManagerViewController`：
+原项目不满足（没有预览/正式之分），改造后逻辑落在右侧详情宿主 `DetailHostViewController` 的 `openPreview` / `openNewTab`：
 
 ```swift
-// 单击文章：预览策略
-private func handleArticlePreviewSelected(_ article: Article) {
-    if let previewIdx = tabs.firstIndex(where: { $0.isPreview }) {
-        // 已有 Preview Tab → 复用它（加载文章、改标题、切过去）
-        tabs[previewIdx].splitVC.showDetail(article: article)
-        tabs[previewIdx].title = article.title
-        switchToTab(at: previewIdx)
+// 单击文章：预览策略（复用预览槽位）
+func openPreview(_ article: Article) {
+    if let index = tabs.firstIndex(where: { $0.isPreview }) {
+        // 已有 Preview Tab → 复用它（加载文章、切过去）
+        load(article: article, into: index)
+        selectedTabID = tabs[index].id
+        refreshUI()
     } else {
         // 没有 Preview Tab（当前都是正式 Tab）→ 新建一个 Preview Tab
-        openNewTab(article: article, isPreview: true)
+        appendTab(for: article, isPreview: true)
     }
 }
 ```
 
-双击 / "+" / "在新 Tab 打开" 都走 `openNewTab(article:isPreview:false)`（正式、不复用）。
+双击 / "在新 Tab 打开" 都走 `openNewTab(article:)`（正式、不复用）。
 
 **"点击按钮标记 → 固定为正式 Tab"的链路**（这就是阶段五那两个按钮的作用）：
 
@@ -358,22 +309,19 @@ private func handleArticlePreviewSelected(_ article: Article) {
 DetailViewController.markAsEdited()
   → detail.isEdited = true
   → onEditStateChanged(true)
-  → CustomSplitViewController.isPinned = true
-  → onTabPinned(true)
-  → BrowserTabManagerViewController: tabs[idx].isPreview = false   // 固定！
+  → DetailHostViewController.setPreview(false, for: controller)   // 固定！
 ```
 
-固定之后，再**单击**左侧文章：因为已没有 Preview Tab，于是 `handleArticlePreviewSelected` 走 `else` 分支 → **新建一个 Preview Tab**，而不是覆盖当前这个正式 Tab。这正是需求要的效果。
+固定之后，再**单击**左侧文章：因为已没有 Preview Tab，于是 `openPreview` 走 `else` 分支 → **新建一个 Preview Tab**，而不是覆盖当前这个正式 Tab。这正是需求要的效果。
 
-为了肉眼可见，`TabBarCell` 里预览 Tab 用**斜体 + 浅色**、正式 Tab 用正常字体：
+为了肉眼可见，`DetailTabCell` 里预览 Tab 用**斜体**、正式 Tab 用正常字体：
 
 ```swift
-func configure(title: String, isActive: Bool, isAddButton: Bool, isPreview: Bool = false) {
+func configure(title: String, selected: Bool, isPreview: Bool) {
     titleLabel.text = title
-    // ...
     titleLabel.font = isPreview
-        ? UIFont.italicSystemFont(ofSize: 13)   // 预览：斜体，强调可复用
-        : UIFont.systemFont(ofSize: 13)         // 正式：正常，强调已固定
+        ? UIFont.italicSystemFont(ofSize: 14)   // 预览：斜体，强调可复用
+        : UIFont.systemFont(ofSize: 14, weight: .semibold)   // 正式：正常，强调已固定
 }
 ```
 
@@ -418,8 +366,9 @@ childVC.removeFromParent()
 
 ```
 ArticleListViewController（点列表）
-   → CustomSplitViewController（中转）
-      → BrowserTabManagerViewController（决策：复用/新建 Tab）
+   → ArticleOpenRouting（协议：列表只发意图）
+      → PhoneArticleRouter / SplitArticleRouter（按设备决策）
+         → iPad/Mac: DetailHostViewController（决策：复用/新建 Tab）
 ```
 
 每个层级只关心自己那点事，职责清晰。
@@ -464,8 +413,9 @@ MultiTabController/
 │   ├── TabBarBuilder.swift              # 组件化：传入 [UIViewController]+标题 → PPTabBarController
 │   ├── ArticleListViewController.swift  # 列表页（UITableView + 单击/双击手势）
 │   ├── DetailViewController.swift       # 详情页（含按钮示例 + isEdited）
-│   ├── CustomSplitViewController.swift  # 手写左右分屏（addChild）+ 事件中转
-│   ├── BrowserTabManagerViewController.swift # iPad/Mac 多 Tab 管理器（含 VS Code 策略）
+│   ├── SplitContainerViewController.swift  # iPad/Mac 根：左右分栏（左 PPTabBarController + 右 DetailHostViewController）
+│   ├── DetailHostViewController.swift      # 右侧多 Tab 详情宿主（含 VS Code 预览/正式策略、保活）
+│   ├── ArticleRouters.swift                # 协议化路由：ArticleOpenMode / ArticleOpenRouting / Phone·Split Router
 │   ├── WindowManager.swift              # 新窗口（模态，不保活）+ NewWindowViewController
 │   └── README.md                        # 原始需求说明
 └── VS Code复用tab策略.md                 # 本项目的 Tab 策略参考
@@ -480,7 +430,7 @@ MultiTabController/
 - **iPhone 也支持双击/固定**：目前双击只在 iPad/Mac 生效，iPhone 仍是纯 push。
 - **持久化 Tab**：现在多 Tab 在内存，重启即丢，可接 `UserDefaults`/本地数据库。
 - **Preview 数量上限**：VS Code 可配置"编辑器组 Preview 数量"，可加参数。
-- **把 iPad/Mac 分支也参数化**：`BrowserTabManagerViewController` 目前仍内置 Tech/News 列表，可像 `TabBarBuilder` 一样接收外部 VC 数组。
+- **按分类隔离详情宿主**：可仿 NewsSplitDemo 的 `useSeparateDetailHostPerSidebarTab`，让 Tech / News 各自拥有独立的 `DetailHostViewController`（目前两者共享一个）。
 
 ---
 

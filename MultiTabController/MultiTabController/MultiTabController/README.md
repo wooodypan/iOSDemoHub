@@ -33,8 +33,9 @@ MultiTabDemo/
 ├── DataModel.swift                     # 数据模型
 ├── RootBuilder.swift                  # 根控制器工厂，按设备直接产出 rootViewController
 ├── TabBarBuilder.swift                # 组件化：传入 [UIViewController]+标题 → PPTabBarController
-├── BrowserTabManagerViewController.swift # iPad/Mac 多Tab管理器
-├── CustomSplitViewController.swift     # 手动实现的左右分屏（addChild）
+├── SplitContainerViewController.swift   # iPad/Mac 根：左右分栏（左 PPTabBarController + 右 DetailHostViewController）
+├── DetailHostViewController.swift       # 右侧多 Tab 详情宿主（含 VS Code 预览/正式策略、保活）
+├── ArticleRouters.swift                 # 协议化路由：ArticleOpenMode / ArticleOpenRouting / Phone·Split Router
 ├── ArticleListViewController.swift     # 列表页（UITableView）
 ├── DetailViewController.swift          # 详情页
 ├── WindowManager.swift                 # 新窗口管理
@@ -53,23 +54,23 @@ RootBuilder.makeRoot() → PPTabBarController（由 TabBarBuilder 构造，直�
 
 ### iPad / Mac Catalyst
 ```
-RootBuilder.makeRoot() → BrowserTabManagerViewController（直接当 root）
-        ├── [Tab Bar: UICollectionView] ← 顶部浏览器式 Tab 栏
-        │       每个 Tab 持有一个 CustomSplitViewController（保活）
-        └── [Content Area] ← 当前激活 Tab 的 CustomSplitViewController
-              ├── 左侧 [leftContainerView]
-              │     └── PPTabBarController (addChild)
-              │           ├── Tech: UINavigationController → ArticleListViewController
-              │           └── News: UINavigationController → ArticleListViewController
-              └── 右侧 [rightContainerView]
-                    └── DetailViewController (addChild)
+RootBuilder.makeRoot() → SplitContainerViewController（直接当 root，左右分栏）
+        ├── 左栏 [leftContainerView]
+        │     └── PPTabBarController (addChild)
+        │           ├── Tech: ArticleListViewController（router=splitRouter）
+        │           └── News: ArticleListViewController（router=splitRouter）
+        └── 右栏 [rightContainerView]
+              └── DetailHostViewController (addChild)
+                    ├── [Tab Bar: UICollectionView] ← 浏览器式多 Tab 条
+                    │       每个 Tab 持有一个 DetailViewController（保活）
+                    └── [Content Area] ← 当前激活 Tab 的 DetailViewController
 ```
 
 ## 核心设计
 
 ### 多 Tab 保活
-`BrowserTab` 对象持有 `CustomSplitViewController` 的**强引用**，
-切换 Tab 时只是将其 view 从 contentContainerView 移除/添加，
+`DetailTabItem` 对象持有 `DetailViewController` 的**强引用**，
+切换 Tab 时只是将其 view 隐藏/显示（或移除/添加），
 ViewController 本身不销毁 → **状态保活**。
 
 ```swift
