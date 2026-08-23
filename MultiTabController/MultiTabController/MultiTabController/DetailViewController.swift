@@ -6,19 +6,22 @@ import UIKit
 //   点击“标记为已编辑”按钮 -> 本控制器的 Bool 属性 isEdited 变为 true，
 //   点击“清除编辑标记”按钮 -> isEdited 变回 false。
 //   状态变化时通过 onEditStateChanged 回调通知父控制器（比如把当前 Tab 固定为正式 Tab）。
-class DetailViewController: UIViewController {
+// 右侧详情页控制器：对外公开，外部可创建、配置并监听其编辑状态。
+public class DetailViewController: UIViewController {
 
-    var onOpenNewTab: ((Article) -> Void)?
-    var onOpenNewWindow: ((Article) -> Void)?
+    // 由外部注入：在当前详情里点“新 Tab 打开”时回调。
+    public var onOpenNewTab: ((Article) -> Void)?
+    // 由外部注入：在当前详情里点“新窗口打开”时回调。
+    public var onOpenNewWindow: ((Article) -> Void)?
 
     // 当备注输入框内容发生变化时回调：
     //   true  = 用户输入了内容（用于把当前 Tab 固定为正式 Tab）
     //   false = 输入框被清空
-    var onEditStateChanged: ((Bool) -> Void)?
+    public var onEditStateChanged: ((Bool) -> Void)?
 
     // 关键 Bool 属性：记录用户是否在备注框里输入过内容。
     // 这是“某个 UIViewController 的某个 Bool 值属性”，输入文字后它就变成 true。
-    var isEdited: Bool = false
+    public var isEdited: Bool = false
 
     private var currentArticle: Article?
 
@@ -36,21 +39,22 @@ class DetailViewController: UIViewController {
     private var actionStackView: UIStackView!
 
     // 重写父类的指定初始化方法（与之前一致，保证 DetailViewController() 可用）。
-    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+    public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
     }
 
     // 便捷初始化：可以传入一篇文章（可选），方便外部直接创建并展示内容。
-    convenience init(article: Article? = nil) {
+    public convenience init(article: Article? = nil) {
         self.init(nibName: nil, bundle: nil)
         self.currentArticle = article
     }
 
-    required init?(coder: NSCoder) {
+    public required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func viewDidLoad() {
+    // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
+    public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         setupViews()
@@ -210,7 +214,8 @@ class DetailViewController: UIViewController {
 
     // MARK: - Configure
 
-    func configure(with article: Article) {
+    // 对外公开：用一篇文章配置详情页（数据先行，UI 在视图就绪后渲染，避免提前访问控件闪退）。
+    public func configure(with article: Article) {
         currentArticle = article
 
         // 切换文章时，把编辑状态重置为 false（不触发编辑回调）

@@ -3,14 +3,17 @@ import UIKit
 // MARK: - WindowManager
 // 负责管理新窗口的打开（Mac Catalyst / iPadOS 13+）
 // 新窗口打开后，关闭即销毁（不保活）
+//
+// 对外公开 openNewWindow：外部如果自己实现路由（ArticleOpenRouting），
+// 也可以在“新窗口”模式下直接调用这个能力。
 
-struct WindowManager {
+public struct WindowManager {
 
     // 存储新窗口对应的文章（通过 userInfo 传递）
     // 注意：多窗口在 UISceneDelegate 中更优雅，但本工程禁用 SceneDelegate
     // 在 iOS 13 以下或 Catalyst 下，回退到模态弹出
 
-    static func openNewWindow(article: Article) {
+    public static func openNewWindow(article: Article) {
         if #available(iOS 13.0, *) {
             // 优先尝试 UIScene 多窗口（需在 Info.plist 配置 UIApplicationSupportsMultipleScenes）
             // 由于本工程不使用 SceneDelegate，降级为模态弹出

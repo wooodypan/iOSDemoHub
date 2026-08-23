@@ -7,25 +7,27 @@ import UIKit
 //   - 双击 = 正式打开（不复用）
 // 但列表页不再直接处理“怎么打开”，而是通过 ArticleOpenRouting 协议把意图发出去，
 // 具体落到 iPhone 的导航栈还是 iPad 的分栏，由 router 决定（模仿 NewsSplitDemo 的解耦思路）。
-class ArticleListViewController: UIViewController {
+// 左侧列表控制器：对外公开，外部可创建并绑定 router。
+public class ArticleListViewController: UIViewController {
 
     private let articles: [Article]
     private let pageTitle: String
     private var tableView: UITableView!
 
-    // 路由协议：列表只发“打开文章”的意图，不关心设备环境。
-    var router: ArticleOpenRouting?
+    // 路由协议：列表只发“打开文章”的意图，不关心设备环境。对外公开以便外部注入。
+    public var router: ArticleOpenRouting?
 
-    init(articles: [Article], title: String) {
+    public init(articles: [Article], title: String) {
         self.articles = articles
         self.pageTitle = title
         super.init(nibName: nil, bundle: nil)
         self.title = title
     }
 
-    required init?(coder: NSCoder) { fatalError() }
+    public required init?(coder: NSCoder) { fatalError() }
 
-    override func viewDidLoad() {
+    // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
+    public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
         setupTableView()
@@ -91,11 +93,11 @@ class ArticleListViewController: UIViewController {
 // MARK: - UITableViewDataSource & Delegate
 extension ArticleListViewController: UITableViewDataSource, UITableViewDelegate {
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    public func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         return articles.count
     }
 
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
         let article = articles[indexPath.row]
         cell.textLabel?.text = article.title

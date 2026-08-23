@@ -6,7 +6,8 @@ import UIKit
 //   - preview：预览（单击）。在右侧详情宿主里复用“预览槽位”，对应 VS Code 的 Preview Tab。
 //   - newTab ：正式 Tab（双击 / 在详情里点“新Tab打开”）。不复用，永远新建。
 //   - newWindow：新窗口打开（Mac Catalyst 多窗口，其它环境降级为新 Tab）。
-enum ArticleOpenMode {
+// “打开文章”的意图枚举：公开，供外部在调用路由时使用。
+public enum ArticleOpenMode {
     case preview
     case newTab
     case newWindow
@@ -15,22 +16,22 @@ enum ArticleOpenMode {
 // MARK: - ArticleOpenRouting
 // 模仿 NewsSplitDemo 的路由协议：把“列表点开文章”从具体展示环境中解耦。
 // 列表页只持有这个协议，不再关心自己处于 iPhone 导航栈、还是 iPad 分栏、还是 Mac Catalyst。
-protocol ArticleOpenRouting: AnyObject {
+public protocol ArticleOpenRouting: AnyObject {
     func openArticle(_ item: Article, mode: ArticleOpenMode)
 }
 
 // MARK: - PhoneArticleRouter
 // iPhone 环境路由：列表在导航栈里，直接 push 详情页即可。
 // 模仿 NewsSplitDemo 的 PhoneArticleRouter，但咱用 WindowManager 处理新窗口（无 WindowLauncher 依赖）。
-final class PhoneArticleRouter: ArticleOpenRouting {
+public final class PhoneArticleRouter: ArticleOpenRouting {
     // 弱引用持有来源 VC，用于拿到它的 navigationController 来 push。
-    weak var sourceViewController: UIViewController?
+    public weak var sourceViewController: UIViewController?
 
-    init(sourceViewController: UIViewController) {
+    public init(sourceViewController: UIViewController) {
         self.sourceViewController = sourceViewController
     }
 
-    func openArticle(_ item: Article, mode: ArticleOpenMode) {
+    public func openArticle(_ item: Article, mode: ArticleOpenMode) {
         // 兜底：拿不到导航控制器就不处理。
         guard let navigationController = sourceViewController?.navigationController else {
             return
@@ -56,11 +57,14 @@ final class PhoneArticleRouter: ArticleOpenRouting {
 // MARK: - SplitArticleRouter
 // iPad / Mac 分栏环境路由：把“打开文章”转交给右侧的 DetailHostViewController 处理。
 // 模仿 NewsSplitDemo 的 SplitArticleRouter，但咱用 WindowManager 替代 WindowLauncher。
-final class SplitArticleRouter: ArticleOpenRouting {
+public final class SplitArticleRouter: ArticleOpenRouting {
     // 由 SplitContainerViewController 注入：给定文章，返回右侧当前可见的详情宿主。
-    var detailHostResolver: ((Article) -> DetailHostViewController?)?
+    public var detailHostResolver: ((Article) -> DetailHostViewController?)?
 
-    func openArticle(_ item: Article, mode: ArticleOpenMode) {
+    // 提供公开的无参初始化器，方便外部自行创建并注入。
+    public init() {}
+
+    public func openArticle(_ item: Article, mode: ArticleOpenMode) {
         switch mode {
         case .preview, .newTab:
             // 交给右侧详情宿主，由它按 VS Code 策略决定复用还是新建。

@@ -17,7 +17,7 @@ private struct DetailTabItem {
 //   - newTab（双击 / “新Tab打开”）：永远新建正式 Tab，不复用。
 //   - 在详情里点击“标记为已编辑”：把当前 Tab 固定为正式 Tab（不再被预览复用覆盖）。
 // 多 Tab 的本质是：多个 DetailViewController 作为子控制器保活（addChild），切换时只隐藏/显示。
-final class DetailHostViewController: UIViewController,
+public final class DetailHostViewController: UIViewController,
     UICollectionViewDataSource,
     UICollectionViewDelegateFlowLayout {
 
@@ -55,7 +55,8 @@ final class DetailHostViewController: UIViewController,
     private var collectionViewHeightConstraint: NSLayoutConstraint?
     private var separatorHeightConstraint: NSLayoutConstraint?
 
-    override func viewDidLoad() {
+    // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
+    public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
         setupViews()
@@ -65,7 +66,7 @@ final class DetailHostViewController: UIViewController,
     // MARK: - 对外的“打开文章”入口（由 router 调用）
 
     /// 预览（单击）：复用已有的预览 Tab；没有则新建一个预览 Tab。
-    func openPreview(_ article: Article) {
+    public func openPreview(_ article: Article) {
         if let index = tabs.firstIndex(where: { $0.isPreview }) {
             // 复用预览槽位：把文章加载进去并切过去。
             load(article: article, into: index)
@@ -78,12 +79,12 @@ final class DetailHostViewController: UIViewController,
     }
 
     /// 正式 Tab（双击 / 在详情里点“新Tab打开”）：永远新建，不复用。
-    func openNewTab(_ article: Article? = nil) {
+    public func openNewTab(_ article: Article? = nil) {
         appendTab(for: article, isPreview: false)
     }
 
     /// 兼容 NewsSplitDemo 式 mode 分发（router 直接调这个即可）。
-    func openArticle(_ item: Article, mode: ArticleOpenMode) {
+    public func openArticle(_ item: Article, mode: ArticleOpenMode) {
         switch mode {
         case .preview:
             openPreview(item)
@@ -97,11 +98,11 @@ final class DetailHostViewController: UIViewController,
 
     // MARK: - UICollectionView 数据源 / 代理
 
-    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+    public func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
         tabs.count
     }
 
-    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+    public func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
         guard let cell = collectionView.dequeueReusableCell(
             withReuseIdentifier: DetailTabCell.reuseIdentifier,
             for: indexPath
@@ -121,12 +122,12 @@ final class DetailHostViewController: UIViewController,
         return cell
     }
 
-    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+    public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         selectedTabID = tabs[indexPath.item].id
         refreshUI()
     }
 
-    func collectionView(
+    public func collectionView(
         _ collectionView: UICollectionView,
         layout collectionViewLayout: UICollectionViewLayout,
         sizeForItemAt indexPath: IndexPath

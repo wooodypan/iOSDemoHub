@@ -1,4 +1,4 @@
-# MultiTabController 从 0 构建全记录
+MultiTabController 从 0 构建全记录
 
 > 一份"施工日志 + 教程"，讲清楚这个支持 **iPhone 单 TabBar、iPad/Mac 左右分栏 + 右侧浏览器式多 Tab 详情宿主** 的 iOS App 是怎么一步步搭起来的。
 > 目标读者：会一点 Swift/UIKit、想搞懂"不用 Storyboard、不用 SceneDelegate、纯代码做多 Tab 容器"的同学。
@@ -41,14 +41,14 @@
 
 ## 2. 环境与前提
 
-| 项 | 值 |
-| --- | --- |
-| 语言 | Swift（UIKit） |
-| IDE | Xcode 26（构建环境 17A324） |
-| 部署目标 | iOS 15.6（README 原写 iOS 12，实际工程设为 15.6） |
-| Mac Catalyst | 已开启（Targets → General → Mac Catalyst） |
-| 入口方式 | 纯代码，**无 Main.storyboard、无 SceneDelegate** |
-| 数据 | 内置假数据（`DataStore`），无需网络 |
+| 项           | 值                                                |
+| ------------ | ------------------------------------------------- |
+| 语言         | Swift（UIKit）                                    |
+| IDE          | Xcode 26（构建环境 17A324）                       |
+| 部署目标     | iOS 15.6（README 原写 iOS 12，实际工程设为 15.6） |
+| Mac Catalyst | 已开启（Targets → General → Mac Catalyst）        |
+| 入口方式     | 纯代码，**无 Main.storyboard、无 SceneDelegate**  |
+| 数据         | 内置假数据（`DataStore`），无需网络               |
 
 > 为什么不用 SceneDelegate？需求明确要求"不使用 UISceneDelegate 相关 API"，所以我们走**传统 App 生命周期**：自己 `new` 一个 `UIWindow`。
 
@@ -381,13 +381,13 @@ ArticleListViewController（点列表）
 
 ## 6. 踩过的坑
 
-| 坑 | 现象 | 解决 |
-| --- | --- | --- |
-| Catalyst 无 `keyWindow` | `UIApplication.shared.keyWindow` 编译/运行报错 | `#if targetEnvironment(macCatalyst)` 下从 `connectedScenes` 取 `UIWindowScene` |
+| 坑                              | 现象                                                                          | 解决                                                                                      |
+| ------------------------------- | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Catalyst 无 `keyWindow`         | `UIApplication.shared.keyWindow` 编译/运行报错                                | `#if targetEnvironment(macCatalyst)` 下从 `connectedScenes` 取 `UIWindowScene`            |
 | `DetailViewController` 初始化器 | 自定义 `init(article:)` 变指定初始化后，`DetailViewController()` 无参调用报错 | 重写 `init(nibName:bundle:)` 继承 `UIViewController()`，再加 `convenience init(article:)` |
-| 双击误触发预览 | 单击/双击都打到列表 | `singleTap.require(toFail: doubleTap)` |
-| 切换文章时编辑状态残留 | 旧实现清输入框时会误触发 `onEditStateChanged` | 改用两个按钮示例，`configure` 只复位 `isEdited = false` 不触发回调 |
-| 删文件还进编译 | 旧模板 `SceneDelegate` 残留 | `PBXFileSystemSynchronizedRootGroup` 下直接 `rm` 即出编译；确认无引用后删除 |
+| 双击误触发预览                  | 单击/双击都打到列表                                                           | `singleTap.require(toFail: doubleTap)`                                                    |
+| 切换文章时编辑状态残留          | 旧实现清输入框时会误触发 `onEditStateChanged`                                 | 改用两个按钮示例，`configure` 只复位 `isEdited = false` 不触发回调                        |
+| 删文件还进编译                  | 旧模板 `SceneDelegate` 残留                                                   | `PBXFileSystemSynchronizedRootGroup` 下直接 `rm` 即出编译；确认无引用后删除               |
 
 ---
 
@@ -434,4 +434,4 @@ MultiTabController/
 
 ---
 
-*构建记录：Xcode 26 / iOS 15.6，纯代码、无 SceneDelegate、Mac Catalyst 开启。所有源码含面向初级程序员的逐行中文注释。*
+_构建记录：Xcode 26 / iOS 15.6，纯代码、无 SceneDelegate、Mac Catalyst 开启。所有源码含面向初级程序员的逐行中文注释。_

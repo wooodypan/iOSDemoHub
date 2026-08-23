@@ -4,12 +4,13 @@ import UIKit
 // 应用“根控制器”的工厂：把“按设备选择布局”的逻辑从 AppDelegate 里抽出来。
 // 直接产出最终要当作 window.rootViewController 的控制器，
 // 不再包一层“不显示任何内容的纯路由容器 VC”。
-enum RootBuilder {
+// 对外公开：作为 CocoaPods 库，外部 App 用 RootBuilder.makeRoot() 即可拿到根控制器。
+public enum RootBuilder {
 
     /// 根据当前设备类型，直接产出根控制器：
     ///   - iPhone：用 TabBarBuilder 构造 “Tech / News” 标签栏（列表包在导航控制器里，便于 push 详情）。
     ///   - iPad / Mac：直接返回分栏根控制器 SplitContainerViewController（左列表 + 右多 Tab 详情宿主）。
-    static func makeRoot() -> UIViewController {
+    public static func makeRoot() -> UIViewController {
         switch DeviceHelper.currentLayout {
         case .iPadOrMac:
             // iPad / Mac 走分栏：左列表 + 右 DetailHostViewController（浏览器式多 Tab 详情宿主）。

@@ -10,7 +10,7 @@ import AppKit
 // 左栏 = PPTabBarController（Tech / News 两个列表，各自装上 SplitArticleRouter）；
 // 右栏 = 一个 DetailHostViewController（右侧多 Tab 详情宿主，承载 VS Code 预览/正式策略）。
 // 这样“浏览器式多 Tab”被下沉到右侧详情宿主里，左栏在切 Tab 时始终不动。
-final class SplitContainerViewController: UIViewController {
+public final class SplitContainerViewController: UIViewController {
 
     private let leftContainerView = UIView()
     private let rightContainerView = UIView()
@@ -42,7 +42,7 @@ final class SplitContainerViewController: UIViewController {
     // 左栏的导航控制器（包住 PPTabBarController，提供导航条）。
     private let leftNavigationController: UINavigationController
 
-    init() {
+    public init() {
         let router = SplitArticleRouter()
         self.splitRouter = router
 
@@ -80,7 +80,8 @@ final class SplitContainerViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func viewDidLoad() {
+    // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
+    public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
         setupLayout()
