@@ -13,12 +13,12 @@
 4. [从 0 到 1：十个构建阶段](#4-从-0-到-1十个构建阶段)
    - 阶段一：干掉 SceneDelegate，纯代码启动
    - 阶段二：数据模型与假数据
-   - 阶段三：设备分发 RootContainerViewController
+   - 阶段三：设备分发 RootBuilder（工厂）
    - 阶段四：列表页 ArticleListViewController
-   - 阶段五：详情页 DetailViewController（含输入框示例）
+   - 阶段五：详情页 DetailViewController（含按钮示例）
    - 阶段六：iPad/Mac 左右分屏 CustomSplitViewController
    - 阶段七：浏览器式多 Tab 管理器
-   - 阶段八：把根容器组件化
+   - 阶段八：抽出根控制器工厂 + TabBarBuilder 组件化
    - 阶段九：VS Code 式"复用 Tab"策略
    - 阶段十：新窗口（模态，不保活）
 5. [核心设计模式](#5-核心设计模式)
@@ -33,7 +33,7 @@
 
 需求来自 `README.md`，一句话概括：**一个"类浏览器"的多标签阅读器**。
 
-- **iPhone**：底部 `UITabBarController`，Tech / News 两个列表 Tab，点列表行 `push` 进详情。
+- **iPhone**：底部 `PPTabBarController`，Tech / News 两个列表 Tab，点列表行 `push` 进详情。
 - **iPad / Mac Catalyst**：顶部一条"浏览器式"Tab 栏（`UICollectionView` 做的），每个 Tab 是一个左右分屏（左列表、右详情），可以"+ 新建"、"× 关闭"，**切换 Tab 不销毁内容（保活）**。
 - **关键约束**：不使用 `UISceneDelegate`；用最朴素的 `addChild(_:)` 手动做视图控制器嵌套；支持 Mac Catalyst。
 
@@ -58,16 +58,16 @@
 
 ```
 AppDelegate（@main，手动创建 UIWindow）
-   └── RootContainerViewController（根容器，按设备二选一）
-         ├── [iPhone]  UITabBarController（addChild）
+   └── RootBuilder.makeRoot()（工厂：按设备直接产出根控制器）
+         ├── [iPhone]  PPTabBarController（由 TabBarBuilder 构造）
          │      ├── Tech:  UINavigationController → ArticleListViewController
          │      └── News:  UINavigationController → ArticleListViewController
          │           点行 → pushViewController(DetailViewController)
          │
-         └── [iPad/Mac]  BrowserTabManagerViewController（addChild）
+         └── [iPad/Mac]  BrowserTabManagerViewController（直接当 root）
                 ├── 顶部 Tab 栏（UICollectionView）：每个 item 是一个 BrowserTab
                 └── 内容区：当前激活 Tab 的 CustomSplitViewController（addChild）
-                       ├── 左侧 leftContainerView → UITabBarController（Tech/News 列表）
+                       ├── 左侧 leftContainerView → PPTabBarController（Tech/News 列表）
                        └── 右侧 rightContainerView → DetailViewController（addChild）
 ```
 
@@ -94,7 +94,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         window = UIWindow(frame: UIScreen.main.bounds)
-        window?.rootViewController = RootContainerViewController() // 根容器
+        window?.rootViewController = RootBuilder.makeRoot() // 工厂按设备产出根控制器
         window?.makeKeyAndVisible()
         return true
     }
@@ -125,7 +125,7 @@ struct DataStore {
 }
 ```
 
-### 阶段三：设备分发 RootContainerViewController
+### 阶段三：设备分发 RootBuilder（工厂）
 
 `DeviceHelper` 用编译期宏 + 运行期判断区分平台：
 
@@ -143,18 +143,22 @@ struct DeviceHelper {
 }
 ```
 
-`RootContainerViewController` 在 `viewDidLoad` 里按设备选布局（详见阶段八的组件化版本）：
+我们用一个**工厂 `RootBuilder`** 把"按设备选布局"从 AppDelegate 里抽出来，直接产出最终要当 `window.rootViewController` 的控制器，**不再包一层不显示内容的容器 VC**：
 
 ```swift
-override func viewDidLoad() {
-    super.viewDidLoad()
-    view.backgroundColor = .systemBackground
-    setupLayout()
-}
-private func setupLayout() {
-    switch DeviceHelper.currentLayout {
-    case .iPadOrMac: setupBrowserTabLayout()   // → BrowserTabManagerViewController
-    case .iPhone:      setupiPhoneTabBarLayout() // → UITabBarController
+enum RootBuilder {
+    // 设备判定是启动期一次性决定，用工厂产出根控制器即可，无需常驻 VC。
+    static func makeRoot() -> UIViewController {
+        switch DeviceHelper.currentLayout {
+        case .iPadOrMac:
+            return BrowserTabManagerViewController()          // iPad/Mac：直接当 root
+        case .iPhone:
+            let techNav = UINavigationController(
+                rootViewController: ArticleListViewController(articles: DataStore.techArticles, title: "Tech"))
+            let newsNav = UINavigationController(
+                rootViewController: ArticleListViewController(articles: DataStore.newsArticles, title: "News"))
+            return TabBarBuilder.build(viewControllers: [techNav, newsNav], titles: ["Tech", "News"])
+        }
     }
 }
 ```
@@ -189,27 +193,29 @@ var onArticleSelected: ((Article) -> Void)?        // 单击 = 预览
 var onArticleDoubleSelected: ((Article) -> Void)?  // 双击 = 正式打开
 ```
 
-### 阶段五：详情页 DetailViewController（含输入框示例）
+### 阶段五：详情页 DetailViewController（含按钮示例）
 
-详情页展示文章，并提供了一个**"输入文字就改变 Bool"的示范**——这正是需求里要的演示：
+详情页展示文章，并提供了一个**"点击按钮就改变 Bool"的示范**——用两个按钮 + 点击事件来演示某个 UIViewController 的 Bool 属性随交互变化：
 
 ```swift
-// 关键 Bool 属性：记录用户是否在备注框里输入过内容
+// 关键 Bool 属性：记录当前详情是否被“标记编辑”
 var isEdited: Bool = false
-// 内容变化时回调：true=已输入（固定当前 Tab），false=已清空
+// 状态变化时回调：true=已标记（固定当前 Tab），false=已清除
 var onEditStateChanged: ((Bool) -> Void)?
 
-private let noteTextField = UITextField()
+// 两个示例按钮共用一个纵向/横向栈
+@objc private func markAsEdited() {
+    isEdited = true                     // ← 点击“标记为已编辑”，Bool 变 true
+    onEditStateChanged?(true)           // 通知父容器（用来把当前 Tab 固定）
+}
 
-@objc private func textChanged() {
-    guard !isResetting else { return } // configure 程序化清空时不触发
-    let hasText = !(noteTextField.text ?? "").isEmpty
-    isEdited = hasText                  // ← 输入文字，这个 Bool 就变成 true
-    onEditStateChanged?(hasText)        // 通知父容器（用来把当前 Tab 固定）
+@objc private func clearEdit() {
+    isEdited = false                    // ← 点击“清除编辑标记”，Bool 变回 false
+    onEditStateChanged?(false)
 }
 ```
 
-> `isResetting` 是个小技巧：切换文章时 `configure(with:)` 会清空输入框，但这属于"程序化重置"，不应该当作"用户编辑"，所以用 `isResetting` 临时屏蔽回调。
+> 用按钮而非输入框，能更直观地演示“点击 → Bool 变化 → 触发回调”的链路：`markAsEdited` 把 `isEdited` 置 `true`，`clearEdit` 置 `false`，两个事件都通过 `onEditStateChanged` 上报。
 
 ### 阶段六：iPad/Mac 左右分屏 CustomSplitViewController
 
@@ -220,10 +226,16 @@ private let leftContainerView = UIView()
 private let rightContainerView = UIView()
 
 private func setupLeftSide() {
-    let tabBar = UITabBarController()
     let techNav = UINavigationController(rootViewController: techListVC)
     let newsNav = UINavigationController(rootViewController: newsListVC)
-    tabBar.viewControllers = [techNav, newsNav]
+    // PPTabBarController 是自定义类：不读 tabBarItem，而是用 ButtonConfiguration 定义每个 Tab。
+    let tabBar = PPTabBarController(
+        viewControllers: [techNav, newsNav],
+        buttonConfigurations: [
+            .init(title: "Tech", image: UIImage(systemName: "laptopcomputer")),
+            .init(title: "News", image: UIImage(systemName: "newspaper"))
+        ]
+    )
     addChild(tabBar)                       // ① 成为子控制器
     leftContainerView.addSubview(tabBar.view)
     tabBar.didMove(toParent: self)        // ② 通知完成添加
@@ -291,49 +303,31 @@ override func viewDidLoad() {
 }
 ```
 
-### 阶段八：把根容器组件化
+### 阶段八：抽出根控制器工厂 + TabBarBuilder 组件化
 
-最早 `RootContainerViewController` 把 `ArticleListViewController` 写死在内部。需求要求它变成**可复用组件**：传入任意 `[UIViewController]` + 标题即可。改造如下：
+最早的根逻辑把 `ArticleListViewController` 写死在内部。我们把"用任意 `[UIViewController]` + 标题构造 `PPTabBarController`"这个能力抽成**可复用的 `TabBarBuilder`**，再把"按设备选布局"抽成 `RootBuilder`，AppDelegate 只调一行：
 
 ```swift
-class RootContainerViewController: UIViewController {
-    private let contentViewControllers: [UIViewController]
-    private let tabTitles: [String]
-
-    // 指定初始化器：外部传入子控制器数组 + 标题
-    init(viewControllers: [UIViewController], titles: [String]) {
-        self.contentViewControllers = viewControllers
-        self.tabTitles = titles
-        super.init(nibName: nil, bundle: nil)
-        setupTabBarItems()
-    }
-
-    // 便捷初始化器（无参）：保留原默认 Tech/News 行为，AppDelegate 调用照旧
-    convenience init() {
-        let techNav = UINavigationController(rootViewController:
-            ArticleListViewController(articles: DataStore.techArticles, title: "Tech"))
-        let newsNav = UINavigationController(rootViewController:
-            ArticleListViewController(articles: DataStore.newsArticles, title: "News"))
-        self.init(viewControllers: [techNav, newsNav], titles: ["Tech", "News"])
-    }
-
-    // 每个 VC 按索引生成 UITabBarItem
-    private func setupTabBarItems() {
-        for (i, vc) in contentViewControllers.enumerated() {
-            let title = i < tabTitles.count ? tabTitles[i] : "Tab \(i + 1)"
-            vc.tabBarItem = UITabBarItem(title: title, image: nil, tag: i)
+// TabBarBuilder：传入子控制器数组 + 标题，产出带正确 Tab 按钮的 PPTabBarController。
+// PPTabBarController 是自定义 UIViewController 子类，不读取 tabBarItem，
+// 而是通过 buttonConfigurations（标题 + 图标）定义每个 Tab。
+enum TabBarBuilder {
+    static func build(viewControllers: [UIViewController], titles: [String]) -> PPTabBarController {
+        let count = min(viewControllers.count, titles.count)
+        let configurations = (0..<count).map { i in
+            PPTabBarController.ButtonConfiguration(title: titles[i], image: nil)
         }
-    }
-
-    private func setupiPhoneTabBarLayout() {
-        let tabBar = UITabBarController()
-        tabBar.viewControllers = contentViewControllers  // 直接等于传入数组
-        addChild(tabBar); /* ... */
+        return PPTabBarController(
+            viewControllers: Array(viewControllers.prefix(count)),
+            buttonConfigurations: configurations
+        )
     }
 }
 ```
 
-> 用法：`RootContainerViewController()` 仍是默认 Tech/News；想自定义就 `RootContainerViewController(viewControllers: [vc1, vc2], titles: ["A", "B"])`。
+> 用法：想自定义就 `TabBarBuilder.build(viewControllers: [vc1, vc2], titles: ["A", "B"])`；`RootBuilder.makeRoot()` 在 iPhone 分支内部就是这么用的，iPad/Mac 则直接返回 `BrowserTabManagerViewController`。
+
+这样层级从 `Window → 容器VC → 目标VC` 扁平成 `Window → 目标VC`，AppDelegate 也保持瘦，组件化能力还留在 `TabBarBuilder` 里可单独复用。
 
 ### 阶段九：VS Code 式"复用 Tab"策略
 
@@ -358,10 +352,10 @@ private func handleArticlePreviewSelected(_ article: Article) {
 
 双击 / "+" / "在新 Tab 打开" 都走 `openNewTab(article:isPreview:false)`（正式、不复用）。
 
-**"输入文字 → 固定为正式 Tab"的链路**（这就是阶段五那个输入框的作用）：
+**"点击按钮标记 → 固定为正式 Tab"的链路**（这就是阶段五那两个按钮的作用）：
 
 ```
-DetailViewController.textChanged()
+DetailViewController.markAsEdited()
   → detail.isEdited = true
   → onEditStateChanged(true)
   → CustomSplitViewController.isPinned = true
@@ -432,7 +426,7 @@ ArticleListViewController（点列表）
 
 ### 设备分支
 
-统一在 `RootContainerViewController` 一处 `switch DeviceHelper.currentLayout`，其余 VC 不关心平台。
+统一在 `RootBuilder` 一处 `switch DeviceHelper.currentLayout`，其余 VC 不关心平台。
 
 ---
 
@@ -443,7 +437,7 @@ ArticleListViewController（点列表）
 | Catalyst 无 `keyWindow` | `UIApplication.shared.keyWindow` 编译/运行报错 | `#if targetEnvironment(macCatalyst)` 下从 `connectedScenes` 取 `UIWindowScene` |
 | `DetailViewController` 初始化器 | 自定义 `init(article:)` 变指定初始化后，`DetailViewController()` 无参调用报错 | 重写 `init(nibName:bundle:)` 继承 `UIViewController()`，再加 `convenience init(article:)` |
 | 双击误触发预览 | 单击/双击都打到列表 | `singleTap.require(toFail: doubleTap)` |
-| 切换文章清输入框误判"已编辑" | `configure` 清文本触发 `onEditStateChanged` | `isResetting` 标志屏蔽程序化清空 |
+| 切换文章时编辑状态残留 | 旧实现清输入框时会误触发 `onEditStateChanged` | 改用两个按钮示例，`configure` 只复位 `isEdited = false` 不触发回调 |
 | 删文件还进编译 | 旧模板 `SceneDelegate` 残留 | `PBXFileSystemSynchronizedRootGroup` 下直接 `rm` 即出编译；确认无引用后删除 |
 
 ---
@@ -466,9 +460,10 @@ MultiTabController/
 ├── MultiTabController/
 │   ├── DataModel.swift                  # Article 模型 + DataStore 假数据
 │   ├── DeviceHelper.swift               # iPhone / iPadOrMac 布局判断
-│   ├── RootContainerViewController.swift# 根容器：按设备分发 + [UIViewController] 组件化
+│   ├── RootBuilder.swift                # 根控制器工厂：按设备直接产出 rootViewController
+│   ├── TabBarBuilder.swift              # 组件化：传入 [UIViewController]+标题 → PPTabBarController
 │   ├── ArticleListViewController.swift  # 列表页（UITableView + 单击/双击手势）
-│   ├── DetailViewController.swift       # 详情页（含备注输入框 + isEdited 示例）
+│   ├── DetailViewController.swift       # 详情页（含按钮示例 + isEdited）
 │   ├── CustomSplitViewController.swift  # 手写左右分屏（addChild）+ 事件中转
 │   ├── BrowserTabManagerViewController.swift # iPad/Mac 多 Tab 管理器（含 VS Code 策略）
 │   ├── WindowManager.swift              # 新窗口（模态，不保活）+ NewWindowViewController
@@ -485,7 +480,7 @@ MultiTabController/
 - **iPhone 也支持双击/固定**：目前双击只在 iPad/Mac 生效，iPhone 仍是纯 push。
 - **持久化 Tab**：现在多 Tab 在内存，重启即丢，可接 `UserDefaults`/本地数据库。
 - **Preview 数量上限**：VS Code 可配置"编辑器组 Preview 数量"，可加参数。
-- **把 iPad/Mac 分支也参数化**：`BrowserTabManagerViewController` 目前仍内置 Tech/News 列表，可像 `RootContainerViewController` 一样接收外部 VC 数组。
+- **把 iPad/Mac 分支也参数化**：`BrowserTabManagerViewController` 目前仍内置 Tech/News 列表，可像 `TabBarBuilder` 一样接收外部 VC 数组。
 
 ---
 

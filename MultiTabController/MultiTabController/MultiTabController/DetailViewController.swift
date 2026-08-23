@@ -2,8 +2,10 @@ import UIKit
 
 // MARK: - DetailViewController
 // 详情页：展示文章内容，提供“在新Tab打开”和“在新窗口打开”按钮。
-// 新增“备注输入框”示例：输入文字后，本控制器的 Bool 属性 isEdited 会变为 true，
-// 并通过 onEditStateChanged 回调通知父控制器（比如把当前 Tab 固定为正式 Tab）。
+// 示例（用两个按钮演示 Bool 属性变化）：
+//   点击“标记为已编辑”按钮 -> 本控制器的 Bool 属性 isEdited 变为 true，
+//   点击“清除编辑标记”按钮 -> isEdited 变回 false。
+//   状态变化时通过 onEditStateChanged 回调通知父控制器（比如把当前 Tab 固定为正式 Tab）。
 class DetailViewController: UIViewController {
 
     var onOpenNewTab: ((Article) -> Void)?
@@ -27,11 +29,9 @@ class DetailViewController: UIViewController {
     private let bodyLabel = UILabel()
     private let placeholderLabel = UILabel()
 
-    // 备注区：一个标签 + 一个输入框
+    // 编辑状态示例区：一个说明标签 + 两个按钮（标记/清除）
     private let noteLabel = UILabel()
-    private let noteTextField = UITextField()
-    // 标记是否正在由 configure 做“程序化重置”，此时不要触发编辑回调
-    private var isResetting: Bool = false
+    private var editStackView: UIStackView!
 
     private var actionStackView: UIStackView!
 
@@ -95,19 +95,21 @@ class DetailViewController: UIViewController {
         bodyLabel.textColor = .secondaryLabel
         bodyLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        // 备注标签
-        noteLabel.text = "我的备注（输入内容后，当前 Tab 会被固定为正式 Tab）"
+        // 编辑状态示例说明
+        noteLabel.text = "点击下方按钮切换当前 Tab 的“编辑状态”：标记为已编辑后，再点左侧文章会新建 Tab 而非覆盖"
         noteLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
         noteLabel.textColor = .secondaryLabel
         noteLabel.numberOfLines = 0
         noteLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        // 备注输入框
-        noteTextField.placeholder = "在这里输入…"
-        noteTextField.borderStyle = .roundedRect
-        noteTextField.font = UIFont.systemFont(ofSize: 15)
-        noteTextField.addTarget(self, action: #selector(textChanged), for: .editingChanged)
-        noteTextField.translatesAutoresizingMaskIntoConstraints = false
+        // 两个示例按钮：点击“标记为已编辑” -> isEdited = true；点击“清除编辑标记” -> isEdited = false
+        let markEditedButton = makeActionButton(title: "标记为已编辑", systemImage: "checkmark.circle", action: #selector(markAsEdited))
+        let clearEditedButton = makeActionButton(title: "清除编辑标记", systemImage: "xmark.circle", action: #selector(clearEdit))
+        editStackView = UIStackView(arrangedSubviews: [markEditedButton, clearEditedButton])
+        editStackView.axis = .horizontal
+        editStackView.spacing = 12
+        editStackView.distribution = .fillEqually
+        editStackView.translatesAutoresizingMaskIntoConstraints = false
 
         // Action buttons
         let newTabButton = makeActionButton(title: "在新 Tab 中打开", systemImage: "plus.rectangle.on.rectangle", action: #selector(openNewTab))
@@ -122,7 +124,7 @@ class DetailViewController: UIViewController {
         contentView.addSubview(titleLabel)
         contentView.addSubview(bodyLabel)
         contentView.addSubview(noteLabel)
-        contentView.addSubview(noteTextField)
+        contentView.addSubview(editStackView)
         contentView.addSubview(actionStackView)
 
         NSLayoutConstraint.activate([
@@ -142,12 +144,12 @@ class DetailViewController: UIViewController {
             noteLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             noteLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
 
-            noteTextField.topAnchor.constraint(equalTo: noteLabel.bottomAnchor, constant: 8),
-            noteTextField.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
-            noteTextField.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
-            noteTextField.heightAnchor.constraint(equalToConstant: 40),
+            editStackView.topAnchor.constraint(equalTo: noteLabel.bottomAnchor, constant: 8),
+            editStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
+            editStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
+            editStackView.heightAnchor.constraint(equalToConstant: 44),
 
-            actionStackView.topAnchor.constraint(equalTo: noteTextField.bottomAnchor, constant: 24),
+            actionStackView.topAnchor.constraint(equalTo: editStackView.bottomAnchor, constant: 24),
             actionStackView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 20),
             actionStackView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -20),
             actionStackView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -24),
@@ -188,18 +190,18 @@ class DetailViewController: UIViewController {
         scrollView.isHidden = !hasArticle
     }
 
-    // MARK: - 备注输入框变化
+    // MARK: - 编辑状态按钮示例
 
-    // 输入框内容变化时被调用（.editingChanged 事件）。
-    @objc private func textChanged() {
-        // 如果是 configure 在做程序化清空，则忽略，不触发编辑回调
-        guard !isResetting else { return }
+    // 点击“标记为已编辑”按钮：把 Bool 属性 isEdited 设为 true，并通知父控制器。
+    @objc private func markAsEdited() {
+        isEdited = true
+        onEditStateChanged?(true)
+    }
 
-        let hasText = !(noteTextField.text ?? "").isEmpty
-        // 关键：输入文字 -> isEdited 变为 true；清空 -> 变回 false
-        isEdited = hasText
-        // 通知父控制器（例如把当前 Tab 固定为正式 Tab）
-        onEditStateChanged?(hasText)
+    // 点击“清除编辑标记”按钮：把 Bool 属性 isEdited 设回 false，并通知父控制器。
+    @objc private func clearEdit() {
+        isEdited = false
+        onEditStateChanged?(false)
     }
 
     // MARK: - Configure
@@ -212,10 +214,7 @@ class DetailViewController: UIViewController {
         title = article.title
         updateVisibility(hasArticle: true)
 
-        // 切换文章时，把备注框重置为空（程序化重置，不触发编辑回调）
-        isResetting = true
-        noteTextField.text = ""
-        isResetting = false
+        // 切换文章时，把编辑状态重置为 false（不触发编辑回调）
         isEdited = false
 
         // iPhone 下，"新Tab"/"新窗口"按钮隐藏（无意义）

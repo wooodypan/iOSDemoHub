@@ -2,7 +2,7 @@ import UIKit
 
 // MARK: - CustomSplitViewController
 // 用 addChild 手动实现左右分屏：
-//   左侧：UITabBarController（内含2个 NavigationController+ListVC）
+//   左侧：PPTabBarController（内含2个 NavigationController+ListVC）
 //   右侧：DetailViewController
 // 本控制器不再自己处理“选中文章”的业务逻辑，而是把事件转发给 BrowserTabManagerViewController：
 //   - onArticlePreviewSelected：左侧列表“单击”（预览）
@@ -19,7 +19,7 @@ class CustomSplitViewController: UIViewController {
     var onTabPinned: ((Bool) -> Void)?
 
     // 关键 Bool 属性：当前这个分屏（Tab）是否已被“固定”。
-    // 当右侧详情输入框输入文字时会被设为 true；清空则变回 false。
+    // 当右侧详情页点击“标记为已编辑”按钮时会被设为 true；点“清除编辑标记”则变回 false。
     var isPinned: Bool = false
 
     private let leftWidth: CGFloat = 320
@@ -33,7 +33,7 @@ class CustomSplitViewController: UIViewController {
     private let dividerView = UIView()
 
     // 左侧 TabBarController（包含2个Tab）
-    private var leftTabBarController: UITabBarController!
+    private var leftTabBarController: PPTabBarController!
     // 右侧详情
     private var detailVC: DetailViewController!
 
@@ -79,11 +79,9 @@ class CustomSplitViewController: UIViewController {
         ])
     }
 
-    // MARK: - Left Side: TabBarController with 2 tabs
+    // MARK: - Left Side: PPTabBarController with 2 tabs
 
     private func setupLeftSide() {
-        let tabBar = UITabBarController()
-
         // Tab 1: Tech 文章列表
         let techListVC = ArticleListViewController(articles: DataStore.techArticles, title: "Tech")
         // 单击 -> 预览；双击 -> 正式打开（转发给父容器 BrowserTabManager 决定如何建 Tab）
@@ -94,7 +92,6 @@ class CustomSplitViewController: UIViewController {
             self?.onArticleOpenSelected?(article)
         }
         let techNav = UINavigationController(rootViewController: techListVC)
-        techNav.tabBarItem = UITabBarItem(title: "Tech", image: UIImage(systemName: "laptopcomputer"), tag: 0)
 
         // Tab 2: News 文章列表
         let newsListVC = ArticleListViewController(articles: DataStore.newsArticles, title: "News")
@@ -105,9 +102,23 @@ class CustomSplitViewController: UIViewController {
             self?.onArticleOpenSelected?(article)
         }
         let newsNav = UINavigationController(rootViewController: newsListVC)
-        newsNav.tabBarItem = UITabBarItem(title: "News", image: UIImage(systemName: "newspaper"), tag: 1)
 
-        tabBar.viewControllers = [techNav, newsNav]
+        // PPTabBarController 是自定义类：不读 tabBarItem，而是用 ButtonConfiguration 定义每个 Tab。
+        // 这里为每个子控制器准备“标题 + 系统图标”，与子控制器数组一一对应。
+        let viewControllers = [techNav, newsNav]
+        let configurations = [
+            PPTabBarController.ButtonConfiguration(
+                title: "Tech",
+                image: UIImage(systemName: "laptopcomputer")
+            ),
+            PPTabBarController.ButtonConfiguration(
+                title: "News",
+                image: UIImage(systemName: "newspaper")
+            )
+        ]
+
+        // 调用 PPTabBarController 提供的指定初始化器构建左侧标签栏。
+        let tabBar = PPTabBarController(viewControllers: viewControllers, buttonConfigurations: configurations)
         leftTabBarController = tabBar
 
         // addChild 添加到左侧容器
