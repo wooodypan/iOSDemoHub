@@ -5,7 +5,7 @@ import Foundation
 public struct DataStore {
     public static let techArticles: [PPContentItem] = (1...20).map {
         PPContentItem(
-            id: $0,
+            id: "tech-\($0)",
             title: "Tech Article \($0)",
             body: "This is the detailed content of tech article \($0). Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
             category: "Tech"
@@ -14,7 +14,7 @@ public struct DataStore {
 
     public static let newsArticles: [PPContentItem] = (1...20).map {
         PPContentItem(
-            id: $0 + 100,
+            id: "news-\($0)",
             title: "News Article \($0)",
             body: "This is the detailed content of news article \($0). Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.",
             category: "News"

@@ -26,6 +26,7 @@ MultiTabController 从 0 构建全记录
 7. [如何运行](#7-如何运行)
 8. [文件清单](#8-文件清单)
 9. [可扩展方向](#9-可扩展方向)
+10. [后续重构：库与示例边界解耦](#10-后续重构库与示例边界解耦)
 
 ---
 
@@ -403,25 +404,31 @@ ArticleListViewController（点列表）
 ## 8. 文件清单
 
 ```
-MultiTabController/
-├── AppDelegate.swift                     # 入口，手动创建 UIWindow，无 SceneDelegate
-├── Info.plist                           # 空 dict（启动屏走 pbxproj 的 UILaunchStoryboardName）
-├── MultiTabController/
-│   ├── DataModel.swift                  # Article 模型 + DataStore 假数据
-│   ├── DeviceHelper.swift               # iPhone / iPadOrMac 布局判断
-│   ├── RootBuilder.swift                # 根控制器工厂：按设备直接产出 rootViewController
-│   ├── TabBarBuilder.swift              # 组件化：传入 [UIViewController]+标题 → PPTabBarController
-│   ├── ArticleListViewController.swift  # 列表页（UITableView + 单击/双击手势）
-│   ├── DetailViewController.swift       # 详情页（含按钮示例 + isEdited）
-│   ├── SplitContainerViewController.swift  # iPad/Mac 根：左右分栏（左 PPTabBarController + 右 DetailHostViewController）
-│   ├── DetailHostViewController.swift      # 右侧多 Tab 详情宿主（含 VS Code 预览/正式策略、保活）
-│   ├── ArticleRouters.swift                # 协议化路由：ArticleOpenMode / ArticleOpenRouting / Phone·Split Router
-│   ├── WindowManager.swift              # 新窗口（模态，不保活）+ NewWindowViewController
-│   └── README.md                        # 原始需求说明
-└── VS Code复用tab策略.md                 # 本项目的 Tab 策略参考
+MultiTabController/                          # 仓库子目录（podspec / Package.swift 所在）
+├── MultiTabController/                      # ① 宿主层（App target，示例代码，不随库发布）
+│   ├── AppDelegate.swift                    # 入口，手动创建 UIWindow，无 SceneDelegate
+│   ├── ArticleListViewController.swift      # 示例列表页（UITableView + 单击/双击手势）
+│   ├── DetailViewController.swift           # 示例内容页（PPContentDisplaying 的参考实现）
+│   ├── DataStore.swift                      # 示例假数据（[PPContentItem]）
+│   ├── Info.plist / Assets.xcassets / Base.lproj
+│   └── MultiTabController/                  # ② 库源码（被 pod / SPM 打包）
+│       ├── SplitContainerViewController.swift  # iPad/Mac 根：左右分栏（左栏注入 + 右侧详情宿主）
+│       ├── DetailHostViewController.swift      # 右侧多 Tab 详情宿主（VS Code 预览/正式策略、保活）
+│       ├── PPContentDisplaying.swift           # 内容页协议 + 宿主上报通道 PPContentHosting
+│       ├── PPContentItem.swift                 # 内容模型（id: String / title / body / category）
+│       ├── PPContentRouters.swift              # 协议化路由：PPContentOpenMode / PPContentRouting / Phone·Split Router
+│       ├── PPTabItem.swift                     # Tab 按钮模型（标题 + 图标）
+│       ├── PPTabBarController.swift            # 自定义标签栏容器（public）
+│       ├── RootBuilder.swift                   # 根控制器工厂：按设备产出 rootViewController
+│       ├── TabBarBuilder.swift                 # 组件化：[UIViewController] + [PPTabItem] → PPTabBarController
+│       ├── DeviceHelper.swift                  # iPhone / iPadOrMac 布局判断
+│       ├── WindowManager.swift                 # 新窗口（模态，不保活）+ NewWindowViewController
+│       └── UIColor+Compatibility.swift         # iOS 12 语义色回退
+└── VS Code复用tab策略.md                     # 本项目的 Tab 策略参考
 ```
 
-> 注：源码实际位于 `MultiTabController/MultiTabController/` 双层目录下（Xcode 模板的目录嵌套），逻辑结构如上。
+> **关键边界**：② 库源码目录里**不含任何内容 UI**——右侧每个 Tab 显示什么，由 ① 宿主层通过
+> `PPContentViewControllerProvider` 注入（详见第 10 节）。`DetailViewController` 因此属于 ①，不属于 ②。
 
 ---
 
@@ -431,6 +438,77 @@ MultiTabController/
 - **持久化 Tab**：现在多 Tab 在内存，重启即丢，可接 `UserDefaults`/本地数据库。
 - **Preview 数量上限**：VS Code 可配置"编辑器组 Preview 数量"，可加参数。
 - **按分类隔离详情宿主**：可仿 NewsSplitDemo 的 `useSeparateDetailHostPerSidebarTab`，让 Tech / News 各自拥有独立的 `DetailHostViewController`（目前两者共享一个）。
+
+---
+
+## 10. 后续重构：库与示例边界解耦
+
+作为**开源库**发布时，一轮评审指出：容器（host）是通用的，但内容却是写死的——边界反了。这一轮专门修三处，让"库"和"示例"彻底分家。
+
+### 10.1 内容页解耦：库不再认识 `DetailViewController`
+
+**问题**：`DetailViewController`（硬编码的文章标题/正文布局 + "标记已编辑/清除"两个演示按钮 + 写死的中文文案）被放在库源码里。集成方接自己的详情页时甩不掉这些包袱。
+
+**改法**：库只认两个方向相反的协议，`DetailViewController` 降级为宿主层的一份参考实现（移到 `AppDelegate.swift` 平级）。
+
+```swift
+// 内容页 → 宿主：上报意图（复用已有的 PPContentOpenMode，不另造枚举）
+public protocol PPContentHosting: AnyObject {
+    func contentViewController(_ vc: UIViewController, didChangeEditedState isEdited: Bool)
+    func contentViewController(_ vc: UIViewController, requestsOpen item: PPContentItem, mode: PPContentOpenMode)
+}
+
+// 宿主 → 内容页：库对内容页的唯一要求
+public protocol PPContentDisplaying: UIViewController {
+    var contentHost: PPContentHosting? { get set }   // 实现方必须 weak，避免循环引用
+    func configure(with item: PPContentItem)
+}
+
+public typealias PPContentViewControllerProvider = () -> PPContentDisplaying
+```
+
+- `DetailHostViewController` / `SplitContainerViewController` / `PPPhoneContentRouter` 都改成接收 `contentViewControllerProvider`（必填），**每新建一个 Tab 就调工厂造一个新内容页**。
+- 原先塞给 `DetailViewController` 的三个闭包（`onEditStateChanged` / `onOpenNewTab` / `onOpenNewWindow`）被 `PPContentHosting` 取代；`DetailHostViewController` 实现该协议，把上报翻译成"固定 Tab / 打开新 Tab / 开新窗口"。
+- **循环引用**：宿主用 `tabs` 数组强引用内容页（保活），所以内容页必须 `weak var contentHost`——协议注释与示例都点明了这条。
+- **iPhone 差异更解耦**：原来靠 `DeviceHelper.currentLayout == .iPhone` 隐藏"新 Tab/新窗口"按钮，现改为**"没有 `contentHost` 就隐藏"**（`PPPhoneContentRouter` push 出来的内容页不注入宿主），示例内容页因此不再依赖 `DeviceHelper`。
+
+事件链从"闭包"变成"协议方法"：
+
+```
+DetailViewController.markAsEdited()
+  → contentHost?.contentViewController(self, didChangeEditedState: true)
+  → DetailHostViewController.setPreview(false, for: vc)   // 固定当前 Tab
+```
+
+### 10.2 放开 TabBar 图标能力，公开 `PPTabBarController`
+
+**问题**：`PPTabBarController` 是 `internal`，唯一公开入口 `TabBarBuilder.build(viewControllers:titles:)` 只收标题、图标恒为 `nil`——外部既配不了图标，也拿不到控制器去配色/切 tab/监听切换。（示例里 `AppDelegate` 能直接 `new PPTabBarController` 只是因为宿主与库同 target，真正的 pod 使用者复现不了。）
+
+**改法**：
+- `ButtonConfiguration`（嵌套 internal 类型）提升为顶层 `public struct PPTabItem { title / image / selectedImage }`。
+- `PPTabBarController` 改 `public final class`，逐个开放 `init` / `selectedIndex`(`public private(set)`) / `onSelectedIndexChanged` / `selectIndex(_:)` / `selectedTintColor` / `unselectedTintColor` / `tabBarBackgroundColor` / `tabBarHeight` / `selectedViewController`。（内部的 `setSelectedIndex(_:notify:)` 保持 private，`notify` 是实现细节不外泄。）
+- `TabBarBuilder.build` 新增 `items: [PPTabItem]` 重载并返回**具体类型** `PPTabBarController`；旧的 `titles:` 重载保留为便捷入口，内部映射成 `PPTabItem`。
+
+```swift
+let bar = TabBarBuilder.build(
+    viewControllers: lists,
+    items: [PPTabItem(title: "Tech", image: UIImage(systemName: "cpu")),
+            PPTabItem(title: "News", image: UIImage(systemName: "newspaper"))]
+)
+bar.selectedTintColor = .systemPink      // ← 现在能配了
+bar.onSelectedIndexChanged = { print($0) }
+```
+
+### 10.3 `PPContentItem.id`：`Int` → `String`
+
+业务侧主键形态各异（UUID、字符串 ID、复合 key），`String` 能无损承载；`Int` 会逼集成方多做一次映射。示例数据顺势改为 `"tech-\($0)"` / `"news-\($0)"`（前缀天然区分，去掉了原来 `$0 + 100` 的避撞技巧）。
+
+### 10.4 验证
+
+- `xcodebuild -scheme MultiTabController -destination 'generic/platform=iOS Simulator' build` → **BUILD SUCCEEDED**。
+- 移动 `DetailViewController.swift` 到宿主层**不需要改 `pbxproj`**：`PBXFileSystemSynchronizedRootGroup` 会自动收录/移除；podspec 与 Package.swift 的 glob 是目录级的，新文件自动纳入、移走的自动排除。
+
+> 这轮只碰"可复用性"三点；打包/发布层面的问题（SPM path、iOS 12 可用性、重复 podspec、git tag 等）不在本次范围。
 
 ---
 

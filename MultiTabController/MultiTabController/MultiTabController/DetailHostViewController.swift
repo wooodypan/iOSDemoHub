@@ -1,27 +1,31 @@
 import UIKit
 
 // MARK: - 单个详情 Tab 的数据
-// 模仿 NewsSplitDemo 的 DetailTabItem：每个 tab 记录 id、对应的内容项、持有的 DetailViewController，
+// 每个 tab 记录 id、对应的内容项、持有的内容页（PPContentDisplaying），
 // 以及它是否为“预览 Tab”（可复用）。
+// controller 是强引用——这正是多 Tab“保活”的本质：控制器不销毁，状态就还在。
 private struct DetailTabItem {
     let id: String
     var item: PPContentItem?
-    let controller: DetailViewController
+    let controller: PPContentDisplaying
     var isPreview: Bool
 }
 
 // MARK: - DetailHostViewController
-// 模仿 NewsSplitDemo 的 DetailHostViewController，但每个 Tab 是咱们的 DetailViewController，
-// 并实现 VS Code 的“复用 Tab 策略”：
+// 右侧多 Tab 详情宿主：承载 VS Code 式“复用 Tab 策略”：
 //   - preview（单击）：复用已有的“预览 Tab”；没有则新建一个预览 Tab。
 //   - newTab（双击 / “新Tab打开”）：永远新建正式 Tab，不复用。
-//   - 在详情里点击“标记为已编辑”：把当前 Tab 固定为正式 Tab（不再被预览复用覆盖）。
-// 多 Tab 的本质是：多个 DetailViewController 作为子控制器保活（addChild），切换时只隐藏/显示。
+//   - 内容页上报“已编辑”：把当前 Tab 固定为正式 Tab（不再被预览复用覆盖）。
+// 库本身不认识 Tab 里显示什么：每个 Tab 的内容页由外部通过 PPContentViewControllerProvider 提供，
+// 只要求它满足 PPContentDisplaying。多个内容页作为子控制器保活（addChild），切换时只隐藏/显示。
 public final class DetailHostViewController: UIViewController,
     UICollectionViewDataSource,
     UICollectionViewDelegateFlowLayout {
 
-    // 内容容器：当前激活的 DetailViewController 显示在这里。
+    // 内容页工厂：每新建一个 Tab 就调用一次，返回一个全新的内容页实例。由外部注入（必填）。
+    private let contentViewControllerProvider: PPContentViewControllerProvider
+
+    // 内容容器：当前激活的内容页显示在这里。
     private let contentContainerView = UIView()
     // 没有 Tab 时显示的占位文案。
     private let placeholderLabel = UILabel()
@@ -65,6 +69,19 @@ public final class DetailHostViewController: UIViewController,
     // 高度约束，方便在没有 Tab 时把 Tab 条收起。
     private var collectionViewHeightConstraint: NSLayoutConstraint?
     private var separatorHeightConstraint: NSLayoutConstraint?
+
+    /// 用内容页工厂初始化。
+    /// - Parameter contentViewControllerProvider: 每新建一个 Tab 调用一次，返回一个全新的内容页。
+    ///   本库不含任何内容 UI，Tab 里显示什么完全由这个工厂决定。
+    public init(contentViewControllerProvider: @escaping PPContentViewControllerProvider) {
+        self.contentViewControllerProvider = contentViewControllerProvider
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
     // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
     public override func viewDidLoad() {
@@ -178,29 +195,17 @@ public final class DetailHostViewController: UIViewController,
 
     private func load(item: PPContentItem, into index: Int) {
         tabs[index].item = item
+        // 载入新内容：configure 内部负责渲染并复位内容页自身的编辑态。
         tabs[index].controller.configure(with: item)
-        // 载入新内容时把编辑状态复位（configure 内部也会复位 isEdited）。
-        tabs[index].controller.isEdited = false
     }
 
     private func appendTab(for item: PPContentItem?, isPreview: Bool) {
-        let controller = DetailViewController()
+        let controller = contentViewControllerProvider()
+        // 先注入宿主通道，再 configure：这样内容页在 configure 时就能依据“有无宿主”决定 UI
+        // （例如无宿主时隐藏“新 Tab / 新窗口”入口）。内容页应以 weak 持有它，避免循环引用。
+        controller.contentHost = self
         if let item = item {
             controller.configure(with: item)
-        }
-
-        // 详情里“标记为已编辑” -> 把当前这个 Tab 固定为正式 Tab（不再被预览复用）。
-        controller.onEditStateChanged = { [weak self, weak controller] pinned in
-            guard let self = self, let controller = controller else { return }
-            self.setPreview(!pinned, for: controller)
-        }
-        // 详情里“在新Tab打开” -> 由宿主新建一个正式 Tab。
-        controller.onOpenNewTab = { [weak self] item in
-            self?.openNewTab(item)
-        }
-        // 详情里“在新窗口打开” -> 交给 WindowManager。
-        controller.onOpenNewWindow = { item in
-            WindowManager.openNewWindow(item: item)
         }
 
         let tabID = UUID().uuidString
@@ -242,7 +247,8 @@ public final class DetailHostViewController: UIViewController,
     }
 
     // 把某个 Tab 设为预览/正式，并刷新对应 cell 的样式。
-    private func setPreview(_ value: Bool, for controller: DetailViewController) {
+    // 用 UIViewController 作参数：PPContentDisplaying 是 class-bound 协议，=== 恒等比较照常可用。
+    private func setPreview(_ value: Bool, for controller: UIViewController) {
         guard let index = tabs.firstIndex(where: { $0.controller === controller }) else { return }
         tabs[index].isPreview = value
         collectionView.reloadItems(at: [IndexPath(item: index, section: 0)])
@@ -331,6 +337,24 @@ public final class DetailHostViewController: UIViewController,
                 self?.collectionView.scrollToItem(at: indexPath, at: .centeredHorizontally, animated: true)
             }
         }
+    }
+}
+
+// MARK: - PPContentHosting
+// 接收内容页上报的意图，翻译成本宿主的 Tab 操作。
+extension DetailHostViewController: PPContentHosting {
+
+    // 内容页编辑态变化：已编辑 -> 把承载它的 Tab 固定为正式 Tab（isPreview = false）。
+    public func contentViewController(_ contentViewController: UIViewController,
+                                      didChangeEditedState isEdited: Bool) {
+        setPreview(!isEdited, for: contentViewController)
+    }
+
+    // 内容页请求打开一个内容项：直接复用本宿主既有的 mode 分发（含 .newWindow 的兜底）。
+    public func contentViewController(_ contentViewController: UIViewController,
+                                      requestsOpen item: PPContentItem,
+                                      mode: PPContentOpenMode) {
+        open(item, mode: mode)
     }
 }
 

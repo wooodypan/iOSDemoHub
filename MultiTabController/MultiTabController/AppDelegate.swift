@@ -11,8 +11,10 @@ import UIKit
 // 本工程刻意不使用 UISceneDelegate（无 Scene 生命周期），
 // 因此在 AppDelegate 里手动创建 UIWindow，并把根控制器设为窗口根。
 //
-// 说明：ArticleListViewController / DataStore 是“示例 / Demo”代码，
+// 说明：ArticleListViewController / DetailViewController / DataStore 都是"示例 / Demo"代码，
 // 已从库源码中拆出，放在与 AppDelegate 平级的宿主层；库本体不依赖它们。
+// 其中 DetailViewController 是 PPContentDisplaying 的参考实现——库只认这个协议，
+// 不含任何内容 UI，Tab 里显示什么由下面的 contentViewControllerProvider 决定。
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
@@ -31,8 +33,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             let techNav = UINavigationController(rootViewController: techList)
             let newsNav = UINavigationController(rootViewController: newsList)
 
-            techList.router = PPPhoneContentRouter(sourceViewController: techList)
-            newsList.router = PPPhoneContentRouter(sourceViewController: newsList)
+            // 内容页工厂：库不含内容 UI，这里注入宿主自己的 DetailViewController。
+            techList.router = PPPhoneContentRouter(
+                sourceViewController: techList,
+                contentViewControllerProvider: { DetailViewController() }
+            )
+            newsList.router = PPPhoneContentRouter(
+                sourceViewController: newsList,
+                contentViewControllerProvider: { DetailViewController() }
+            )
 
             return TabBarBuilder.build(viewControllers: [techNav, newsNav], titles: ["Tech", "News"])
         }
@@ -40,24 +49,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // 3. iPad / Mac 根：左侧列表 + 右侧多 Tab 详情宿主。
         let iPadOrMacRoot: () -> UIViewController = {
             let router = PPSplitContentRouter()
-            let categories: [(title: String, items: [PPContentItem])] = [
-                ("Tech", DataStore.techArticles),
-                ("News", DataStore.newsArticles)
+            let categories: [(title: String, image: UIImage?, items: [PPContentItem])] = [
+                ("Tech", UIImage(systemName: "cpu"), DataStore.techArticles),
+                ("News", UIImage(systemName: "newspaper"), DataStore.newsArticles)
             ]
-            let lists = categories.map { title, items in
+            let lists = categories.map { title, _, items -> UIViewController in
                 let list = ArticleListViewController(articles: items, title: title)
                 list.router = router
                 return list
             }
-            let configurations = categories.map { title, _ in
-                PPTabBarController.ButtonConfiguration(title: title, image: nil)
-            }
-            let sidebar = PPTabBarController(
+            // 用 PPTabItem 传入图标，演示 TabBarBuilder 新开放的图标能力。
+            let sidebar = TabBarBuilder.build(
                 viewControllers: lists,
-                buttonConfigurations: configurations,
-                initialIndex: 0
+                items: categories.map { PPTabItem(title: $0.title, image: $0.image) }
             )
-            return SplitContainerViewController(leftViewController: sidebar, router: router)
+            return SplitContainerViewController(
+                leftViewController: sidebar,
+                router: router,
+                contentViewControllerProvider: { DetailViewController() }
+            )
         }
 
         // 4. 由 RootBuilder 根据设备分发到上面两套根之一。

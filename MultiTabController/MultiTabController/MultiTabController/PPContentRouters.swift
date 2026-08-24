@@ -20,14 +20,24 @@ public protocol PPContentRouting: AnyObject {
 }
 
 // MARK: - PPPhoneContentRouter
-// iPhone 环境路由：列表在导航栈里，直接 push 详情页即可。
-// 模仿 NewsSplitDemo 的 PhoneArticleRouter，但咱用 WindowManager 处理新窗口（无 WindowLauncher 依赖）。
+// iPhone 环境路由：列表在导航栈里，直接 push 内容页即可。
+// 内容页由外部注入的工厂提供，本库不含任何内容 UI。
 public final class PPPhoneContentRouter: PPContentRouting {
     // 弱引用持有来源 VC，用于拿到它的 navigationController 来 push。
     public weak var sourceViewController: UIViewController?
 
-    public init(sourceViewController: UIViewController) {
+    // 内容页工厂：每次 push 都造一个新的内容页。
+    private let contentViewControllerProvider: PPContentViewControllerProvider
+
+    /// - Parameters:
+    ///   - sourceViewController: 发起跳转的列表页，用它的 navigationController 做 push。
+    ///   - contentViewControllerProvider: 内容页工厂，每次打开内容调用一次。
+    public init(
+        sourceViewController: UIViewController,
+        contentViewControllerProvider: @escaping PPContentViewControllerProvider
+    ) {
         self.sourceViewController = sourceViewController
+        self.contentViewControllerProvider = contentViewControllerProvider
     }
 
     public func open(_ item: PPContentItem, mode: PPContentOpenMode) {
@@ -38,12 +48,11 @@ public final class PPPhoneContentRouter: PPContentRouting {
 
         switch mode {
         case .preview, .newTab:
-            // iPhone 没有“预览/正式”之分，统一 push 一个详情页。
-            let detail = DetailViewController()
+            // iPhone 没有”预览/正式”之分，统一 push 一个内容页。
+            let detail = contentViewControllerProvider()
+            // 不注入 contentHost：iPhone 上没有多 Tab 宿主，
+            // 内容页可据此隐藏”新 Tab / 新窗口”这类只在分栏环境下有意义的入口。
             detail.configure(with: item)
-            // iPhone 上“新Tab/新窗口”按钮无意义，关掉。
-            detail.onOpenNewTab = nil
-            detail.onOpenNewWindow = nil
             navigationController.pushViewController(detail, animated: true)
 
         case .newWindow:

@@ -1,27 +1,29 @@
 import UIKit
 
 // MARK: - DetailViewController
-// 详情页：展示文章内容，提供“在新Tab打开”和“在新窗口打开”按钮。
-// 示例（用两个按钮演示 Bool 属性变化）：
-//   点击“标记为已编辑”按钮 -> 本控制器的 Bool 属性 isEdited 变为 true，
-//   点击“清除编辑标记”按钮 -> isEdited 变回 false。
-//   状态变化时通过 onEditStateChanged 回调通知父控制器（比如把当前 Tab 固定为正式 Tab）。
-// 右侧详情页控制器：对外公开，外部可创建、配置并监听其编辑状态。
-public class DetailViewController: UIViewController {
+// 示例内容页（Demo，不属于库本体）：PPContentDisplaying 的参考实现。
+//
+// 库（MultiTabController）本身不含任何内容 UI，它只认 PPContentDisplaying 协议：
+//   - configure(with:)  宿主用内容项配置本页（可能在 view 加载前被调用）；
+//   - contentHost       宿主注入的上报通道，本页通过它把"想做什么"说出去。
+// 所以接入方完全可以用自己的详情页替换本文件，只要同样实现这个协议即可。
+//
+// 本示例演示（用两个按钮演示 Bool 属性变化）：
+//   点击"标记为已编辑" -> isEdited 变为 true，通过 contentHost 上报，
+//   宿主收到后会把承载本页的 Tab 固定为正式 Tab（再点左侧列表不会覆盖它）。
+//   点击"清除编辑标记" -> isEdited 变回 false，该 Tab 又可被预览复用。
+final class DetailViewController: UIViewController, PPContentDisplaying {
 
-    // 由外部注入：在当前详情里点“新 Tab 打开”时回调。
-    public var onOpenNewTab: ((PPContentItem) -> Void)?
-    // 由外部注入：在当前详情里点“新窗口打开”时回调。
-    public var onOpenNewWindow: ((PPContentItem) -> Void)?
+    // MARK: - PPContentDisplaying
 
-    // 当备注输入框内容发生变化时回调：
-    //   true  = 用户输入了内容（用于把当前 Tab 固定为正式 Tab）
-    //   false = 输入框被清空
-    public var onEditStateChanged: ((Bool) -> Void)?
+    // 宿主注入的上报通道。
+    // 必须是 weak：宿主（DetailHostViewController）通过 tabs 数组强引用本页以实现保活，
+    // 本页再强引用宿主就会形成循环引用。
+    weak var contentHost: PPContentHosting?
 
-    // 关键 Bool 属性：记录用户是否在备注框里输入过内容。
-    // 这是“某个 UIViewController 的某个 Bool 值属性”，输入文字后它就变成 true。
-    public var isEdited: Bool = false
+    // 关键 Bool 属性：记录用户是否把当前页标记为"已编辑"。
+    // 这是"某个 UIViewController 的某个 Bool 值属性"，它变化后当前 Tab 就不再被预览复用。
+    var isEdited: Bool = false
 
     private var currentItem: PPContentItem?
 
@@ -38,30 +40,30 @@ public class DetailViewController: UIViewController {
 
     private var actionStackView: UIStackView!
 
-    // 重写父类的指定初始化方法（与之前一致，保证 DetailViewController() 可用）。
-    public override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+    // 重写父类的指定初始化方法：这样 Swift 才会继承 UIViewController 的便捷初始化器，
+    // 保证 DetailViewController() 可用（内容页工厂就是这么造页的）。
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
     }
 
-    // 便捷初始化：可以传入一个内容项（可选），方便外部直接创建并展示内容。
-    public convenience init(item: PPContentItem? = nil) {
+    // 便捷初始化：可以传入一个内容项（可选），方便直接创建并展示内容。
+    convenience init(item: PPContentItem? = nil) {
         self.init(nibName: nil, bundle: nil)
         self.currentItem = item
     }
 
-    public required init?(coder: NSCoder) {
+    required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
-    public override func viewDidLoad() {
+    override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .pp_systemBackground
         setupViews()
-        // 视图加载完成后，把 configure 里保存的文章数据渲染到界面上。
+        // 视图加载完成后，把 configure 里保存的数据渲染到界面上。
         // （作为子控制器创建时，configure 可能在 viewDidLoad 之前被调用，
         //   此时控件还没创建，所以那时只存数据、不碰 UI。）
-        applyArticleToUI()
+        applyItemToUI()
     }
 
     // MARK: - Setup
@@ -175,7 +177,7 @@ public class DetailViewController: UIViewController {
             placeholderLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
 
-        updateVisibility(hasArticle: false)
+        updateVisibility(hasItem: false)
     }
 
     private func makeActionButton(title: String, systemImage: String, action: Selector) -> UIButton {
@@ -193,67 +195,67 @@ public class DetailViewController: UIViewController {
         return button
     }
 
-    private func updateVisibility(hasArticle: Bool) {
-        placeholderLabel.isHidden = hasArticle
-        scrollView.isHidden = !hasArticle
+    private func updateVisibility(hasItem: Bool) {
+        placeholderLabel.isHidden = hasItem
+        scrollView.isHidden = !hasItem
     }
 
     // MARK: - 编辑状态按钮示例
 
-    // 点击“标记为已编辑”按钮：把 Bool 属性 isEdited 设为 true，并通知父控制器。
+    // 点击“标记为已编辑”：把 isEdited 设为 true，并上报宿主（宿主会把当前 Tab 固定为正式 Tab）。
     @objc private func markAsEdited() {
         isEdited = true
-        onEditStateChanged?(true)
+        contentHost?.contentViewController(self, didChangeEditedState: true)
     }
 
-    // 点击“清除编辑标记”按钮：把 Bool 属性 isEdited 设回 false，并通知父控制器。
+    // 点击“清除编辑标记”：把 isEdited 设回 false，当前 Tab 重新可被预览复用。
     @objc private func clearEdit() {
         isEdited = false
-        onEditStateChanged?(false)
+        contentHost?.contentViewController(self, didChangeEditedState: false)
     }
 
-    // MARK: - Configure
+    // MARK: - PPContentDisplaying：配置
 
-    // 对外公开：用一个内容项配置详情页（数据先行，UI 在视图就绪后渲染，避免提前访问控件闪退）。
-    public func configure(with item: PPContentItem) {
+    // 用一个内容项配置本页（数据先行，UI 在视图就绪后渲染，避免提前访问控件闪退）。
+    func configure(with item: PPContentItem) {
         currentItem = item
 
-        // 切换文章时，把编辑状态重置为 false（不触发编辑回调）
+        // 切换内容时，把编辑状态重置为 false（不触发上报：宿主复用预览 Tab 时本就是预览态）。
         isEdited = false
 
-        // 把数据渲染到界面。关键点：DetailViewController 在作为子控制器创建时，
-        // 可能还没触发 viewDidLoad（视图尚未加载），此时直接访问 titleLabel /
-        // actionStackView 等控件会闪退（隐式解包的 Optional 为 nil）。
-        // 所以这里先只保存数据，真正更新 UI 交给 applyArticleToUI() 处理，
-        // 它内部会用 isViewLoaded 判断视图是否已就绪。
-        applyArticleToUI()
+        // 把数据渲染到界面。关键点：本页作为子控制器创建时，可能还没触发 viewDidLoad
+        // （视图尚未加载），此时直接访问 titleLabel / actionStackView 等控件会闪退
+        // （隐式解包的 Optional 为 nil）。所以这里先只保存数据，真正更新 UI 交给
+        // applyItemToUI() 处理，它内部会用 isViewLoaded 判断视图是否已就绪。
+        applyItemToUI()
     }
 
-    // 把保存的文章数据更新到界面控件上。
+    // 把保存的内容数据更新到界面控件上。
     // 用 isViewLoaded 守卫：只有视图已经加载（viewDidLoad 跑过、控件已创建），
     // 才真正去设置控件；否则只保存数据，等 viewDidLoad 末尾再调用本方法。
-    private func applyArticleToUI() {
+    private func applyItemToUI() {
         guard isViewLoaded, let item = currentItem else { return }
 
         categoryLabel.text = item.category.uppercased()
         titleLabel.text = item.title
         bodyLabel.text = item.body
         title = item.title
-        updateVisibility(hasArticle: true)
+        updateVisibility(hasItem: true)
 
-        // iPhone 下，"新Tab"/"新窗口"按钮隐藏（无意义）
-        actionStackView.isHidden = (DeviceHelper.currentLayout == .iPhone)
+        // 没有多 Tab 宿主时（例如 iPhone 上被直接 push 出来），
+        // "新 Tab / 新窗口"这两个入口没有意义，隐藏掉。
+        actionStackView.isHidden = (contentHost == nil)
     }
 
     // MARK: - Actions
 
     @objc private func openNewTab() {
         guard let item = currentItem else { return }
-        onOpenNewTab?(item)
+        contentHost?.contentViewController(self, requestsOpen: item, mode: .newTab)
     }
 
     @objc private func openNewWindow() {
         guard let item = currentItem else { return }
-        onOpenNewWindow?(item)
+        contentHost?.contentViewController(self, requestsOpen: item, mode: .newWindow)
     }
 }

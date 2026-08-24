@@ -50,8 +50,8 @@ public final class SplitContainerViewController: UIViewController {
     private let minLeftWidth: CGFloat = 220     // 左栏最小宽度
     private let minRightWidth: CGFloat = 320    // 右栏最小宽度
 
-    // 右侧唯一的详情宿主（多 Tab 都在它里面）。
-    private let detailHost = DetailHostViewController()
+    // 右侧唯一的详情宿主（多 Tab 都在它里面）。内容页由外部注入的工厂提供。
+    private let detailHost: DetailHostViewController
 
     // 分栏路由：列表发出的“打开内容”意图由它转交给右侧 detailHost。
     private let splitRouter: PPSplitContentRouter
@@ -59,14 +59,25 @@ public final class SplitContainerViewController: UIViewController {
     // 左栏的导航控制器（包住 PPTabBarController，提供导航条）。
     private let leftNavigationController: UINavigationController
 
-    /// 用外部提供的左侧内容控制器（例如 PPTabBarController 包着若干列表）与分栏路由初始化。
-    /// 本容器不创建任何业务列表或数据，只负责：
+    /// 用外部提供的左侧内容控制器、分栏路由与内容页工厂初始化。
+    /// 本容器不创建任何业务列表、数据或内容页，只负责：
     ///   1. 把 router.detailHostResolver 指向右侧详情宿主，使“打开内容”能落到右侧；
     ///   2. 响应右侧详情宿主侧栏按钮的展开/折叠请求。
     /// 列表控制器及其 router 由调用方（宿主 App）自行构建。
-    public init(leftViewController: UIViewController, router: PPSplitContentRouter) {
+    /// - Parameters:
+    ///   - leftViewController: 左栏内容（例如 PPTabBarController 包着若干列表）。
+    ///   - router: 分栏路由，列表发出的“打开内容”意图经它转交右侧。
+    ///   - contentViewControllerProvider: 右侧每个 Tab 的内容页工厂，每新建一个 Tab 调用一次。
+    public init(
+        leftViewController: UIViewController,
+        router: PPSplitContentRouter,
+        contentViewControllerProvider: @escaping PPContentViewControllerProvider
+    ) {
         self.splitRouter = router
         self.leftNavigationController = UINavigationController(rootViewController: leftViewController)
+        self.detailHost = DetailHostViewController(
+            contentViewControllerProvider: contentViewControllerProvider
+        )
 
         super.init(nibName: nil, bundle: nil)
 
