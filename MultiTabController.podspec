@@ -28,7 +28,7 @@ DESC
   # 只打包库源码（MultiTabController/MultiTabController/ 下的 swift 文件），
   # 明确排除 App 宿主层（AppDelegate.swift / Info.plist / LaunchScreen / Assets.xcassets）
   # 与参考项目 NewsSplitDemo。
-  s.source_files = 'MultiTabController/MultiTabController/**/*.swift'
+  s.source_files = 'MultiTabController/MultiTabController/MultiTabController/**/*.swift'
 
   # UIKit 为主；Mac Catalyst 下用到的 AppKit 由系统自动链接，无需在此声明
   s.frameworks   = 'UIKit'

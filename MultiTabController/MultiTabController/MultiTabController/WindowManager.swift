@@ -86,7 +86,7 @@ class NewWindowViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .pp_systemBackground
         setupCloseButton()
         setupContent()
     }
@@ -140,7 +140,7 @@ class NewWindowViewController: UIViewController {
         bodyLabel.text = article.body
         bodyLabel.font = UIFont.systemFont(ofSize: 15)
         bodyLabel.numberOfLines = 0
-        bodyLabel.textColor = .secondaryLabel
+        bodyLabel.textColor = .pp_secondaryLabel
         bodyLabel.translatesAutoresizingMaskIntoConstraints = false
 
         let noteLabel = UILabel()

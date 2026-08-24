@@ -56,7 +56,7 @@ public class DetailViewController: UIViewController {
     // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .pp_systemBackground
         setupViews()
         // 视图加载完成后，把 configure 里保存的文章数据渲染到界面上。
         // （作为子控制器创建时，configure 可能在 viewDidLoad 之前被调用，
@@ -100,13 +100,13 @@ public class DetailViewController: UIViewController {
         // Body
         bodyLabel.font = UIFont.systemFont(ofSize: 15)
         bodyLabel.numberOfLines = 0
-        bodyLabel.textColor = .secondaryLabel
+        bodyLabel.textColor = .pp_secondaryLabel
         bodyLabel.translatesAutoresizingMaskIntoConstraints = false
 
         // 编辑状态示例说明
         noteLabel.text = "点击下方按钮切换当前 Tab 的“编辑状态”：标记为已编辑后，再点左侧文章会新建 Tab 而非覆盖"
         noteLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
-        noteLabel.textColor = .secondaryLabel
+        noteLabel.textColor = .pp_secondaryLabel
         noteLabel.numberOfLines = 0
         noteLabel.translatesAutoresizingMaskIntoConstraints = false
 
@@ -166,7 +166,7 @@ public class DetailViewController: UIViewController {
 
         // Placeholder
         placeholderLabel.text = "← 请从左侧选择文章"
-        placeholderLabel.textColor = .tertiaryLabel
+        placeholderLabel.textColor = .pp_tertiaryLabel
         placeholderLabel.font = UIFont.systemFont(ofSize: 18)
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(placeholderLabel)

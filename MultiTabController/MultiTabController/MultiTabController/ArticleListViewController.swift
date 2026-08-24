@@ -29,7 +29,7 @@ public class ArticleListViewController: UIViewController {
     // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = .pp_systemBackground
         setupTableView()
         setupTapGestures()
     }

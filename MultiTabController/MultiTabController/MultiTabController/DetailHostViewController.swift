@@ -28,6 +28,17 @@ public final class DetailHostViewController: UIViewController,
     // Tab 条与内容之间的分隔线。
     private let separatorView = UIView()
 
+    // 左栏展开/折叠按钮：放在 Tab 条（collectionView）的最左侧。
+    // 点击后不自己处理，而是通过 onToggleSidebarRequest 回调通知父容器（SplitContainerViewController），
+    // 由父容器真正执行 leftContainerView 的展开/折叠（模仿 UISplitViewController 的 showColumn/hideColumn）。
+    private let sidebarToggleButton = UIButton(type: .system)
+
+    // 当前左栏是否处于折叠状态（决定按钮图标：折叠时显示“向右箭头”，提示点击可展开）。
+    private var isSidebarCollapsed = false
+
+    /// 点击侧栏按钮时的回调：由父容器（SplitContainerViewController）执行左栏的展开/折叠。
+    public var onToggleSidebarRequest: (() -> Void)?
+
     private lazy var collectionViewLayout: UICollectionViewFlowLayout = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .horizontal
@@ -61,6 +72,30 @@ public final class DetailHostViewController: UIViewController,
         view.backgroundColor = .white
         setupViews()
         refreshUI()
+    }
+
+    // MARK: - 侧栏按钮状态（由父容器在展开/折叠后调用，保持图标与状态一致）
+
+    /// 父容器展开/折叠左栏后调用，用来同步按钮图标。
+    public func setSidebarCollapsed(_ collapsed: Bool) {
+        isSidebarCollapsed = collapsed
+        updateSidebarButtonIcon()
+    }
+
+    // 点击侧栏按钮：自己不执行任何布局变化，只把“想展开/折叠”的意图通知父容器。
+    @objc private func sidebarButtonTapped() {
+        onToggleSidebarRequest?()
+    }
+
+    // 折叠状态显示“向右箭头”（提示点击可展开左栏），展开状态显示 sidebar 图标（提示点击可收起）。
+    private func updateSidebarButtonIcon() {
+        if #available(iOS 13.0, *) {
+            let symbolName = "sidebar.leading"
+            let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .medium)
+            sidebarToggleButton.setImage(UIImage(systemName: symbolName, withConfiguration: config), for: .normal)
+        } else {
+            sidebarToggleButton.setTitle("☰", for: .normal)
+        }
     }
 
     // MARK: - 对外的“打开文章”入口（由 router 调用）
@@ -156,7 +191,7 @@ public final class DetailHostViewController: UIViewController,
 
         // 详情里“标记为已编辑” -> 把当前这个 Tab 固定为正式 Tab（不再被预览复用）。
         controller.onEditStateChanged = { [weak self, weak controller] pinned in
-            guard let self, let controller else { return }
+            guard let self = self, let controller = controller else { return }
             self.setPreview(!pinned, for: controller)
         }
         // 详情里“在新Tab打开” -> 由宿主新建一个正式 Tab。
@@ -225,11 +260,18 @@ public final class DetailHostViewController: UIViewController,
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         placeholderLabel.text = "← 请从左侧选择文章"
         placeholderLabel.font = UIFont.systemFont(ofSize: 18, weight: .medium)
-        placeholderLabel.textColor = .tertiaryLabel
+        placeholderLabel.textColor = .pp_tertiaryLabel
+
+        // 侧栏展开/折叠按钮：与 Tab 条等高、位于其最左侧。
+        sidebarToggleButton.translatesAutoresizingMaskIntoConstraints = false
+        sidebarToggleButton.tintColor = UIColor(white: 0.35, alpha: 1.0)
+        sidebarToggleButton.addTarget(self, action: #selector(sidebarButtonTapped), for: .touchUpInside)
+        updateSidebarButtonIcon()
 
         view.addSubview(collectionView)
         view.addSubview(separatorView)
         view.addSubview(contentContainerView)
+        view.addSubview(sidebarToggleButton)
         contentContainerView.addSubview(placeholderLabel)
 
         let collectionViewHeightConstraint = collectionView.heightAnchor.constraint(equalToConstant: 44)
@@ -238,8 +280,15 @@ public final class DetailHostViewController: UIViewController,
         self.separatorHeightConstraint = separatorHeightConstraint
 
         NSLayoutConstraint.activate([
+            // 侧栏按钮：贴在左侧，与 Tab 条同一行、同一高度（即使没有 Tab 时也保持可见，方便随时展开左栏）。
+            sidebarToggleButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            sidebarToggleButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            sidebarToggleButton.widthAnchor.constraint(equalToConstant: 32),
+            sidebarToggleButton.heightAnchor.constraint(equalToConstant: 44),
+
             collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            // Tab 条从侧栏按钮的右边开始排布。
+            collectionView.leadingAnchor.constraint(equalTo: sidebarToggleButton.trailingAnchor, constant: 8),
             collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
             collectionViewHeightConstraint,
 

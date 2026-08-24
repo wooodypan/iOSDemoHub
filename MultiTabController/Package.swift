@@ -1,13 +1,13 @@
-// swift-tools-version: 5.7
+// swift-tools-version: 5.0
 // MultiTabController 的 Swift Package Manager 支持。
-// 配置与 MultiTabController.podspec 保持一致：iOS 15.0+，Swift 5.7+ 工具链。
+// 配置与 MultiTabController.podspec 保持一致：iOS 12.0+，Swift 5.0+ 工具链。
 import PackageDescription
 
 let package = Package(
     name: "MultiTabController",
     platforms: [
-        // 与 podspec 的 s.platforms = { :ios => '15.0' } 一致
-        .iOS(.v15)
+        // 与 podspec 的 s.platforms = { :ios => '12.0' } 一致
+        .iOS(.v12)
     ],
     products: [
         // 库产品名 = MultiTabController，外部工程 `import MultiTabController` 即可使用

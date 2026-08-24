@@ -24,9 +24,25 @@ public final class SplitContainerViewController: UIViewController {
     // 左栏宽度约束（存为属性，拖动时动态修改它的 constant 即可改变左右比例）。
     private var leftWidthConstraint: NSLayoutConstraint!
 
+    // 左栏的 leading 约束（存为属性）：折叠左栏时不改宽度、而是把它的 constant 改为负值，
+    // 让左栏 + 分割线整体滑出屏幕左侧（模仿 UISplitViewController 的 hideColumn）；
+    // 展开时再改回 0。这样左栏内容不会因宽度变小而回流重排。
+    private var leftLeadingConstraint: NSLayoutConstraint!
+
     // 拖动时的临时状态：记录起始宽度与指针起始位置，按位移增量调整。
     private var dragStartLeftWidth: CGFloat = 0
     private var dragStartLocationX: CGFloat = 0
+
+    /// 左栏是否可见（对外公开的唯一控制入口）。
+    /// 读取得到当前真实状态；设置即可展开/折叠（视图已加载时立即套用，无动画）。
+    /// 需要带动画请调用 setLeftSidebarVisible(_:animated:) 或 toggleLeftSidebar()。
+    public var isLeftSidebarVisible: Bool {
+        get { !isSidebarHidden }
+        set { setLeftSidebarVisible(newValue, animated: false) }
+    }
+
+    // 内部唯一运行时状态：是否隐藏左栏。
+    private var isSidebarHidden = false
 
     // 分割线相关常量。
     private let dividerHitWidth: CGFloat = 12   // 抓取区宽度（命中范围，越大越好抓）
@@ -73,6 +89,11 @@ public final class SplitContainerViewController: UIViewController {
         router.detailHostResolver = { [weak self] _ in
             self?.detailHost
         }
+
+        // 右侧详情宿主里侧栏按钮的点击 -> 由本容器执行左栏的展开/折叠动画。
+        detailHost.onToggleSidebarRequest = { [weak self] in
+            self?.toggleLeftSidebar()
+        }
     }
 
     @available(*, unavailable)
@@ -80,13 +101,17 @@ public final class SplitContainerViewController: UIViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
+    // 库要对外暴露类型，故声明为 public；覆盖系统 open 方法用 internal 亦可，这里统一对外口径。
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .white
         setupLayout()
         embed(leftNavigationController, in: leftContainerView)
         embed(detailHost, in: rightContainerView)
+
+        // 套用“启动默认值”：若外部在加载前把 isLeftSidebarVisible 设为 false，
+        // isSidebarHidden 此时已是 true，这里按折叠状态布局一次（不带动画）。
+        applySidebarLayout(animated: false)
     }
 
     // MARK: - 布局
@@ -115,10 +140,12 @@ public final class SplitContainerViewController: UIViewController {
 
         // 关键：把左栏宽度约束存成属性，拖动时改它的 constant。
         leftWidthConstraint = leftContainerView.widthAnchor.constraint(equalToConstant: 320)
+        // 关键：把左栏 leading 约束存成属性，折叠/展开时改它的 constant 做滑动动画。
+        leftLeadingConstraint = leftContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 0)
 
         NSLayoutConstraint.activate([
             leftContainerView.topAnchor.constraint(equalTo: view.topAnchor),
-            leftContainerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            leftLeadingConstraint,
             leftContainerView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             leftWidthConstraint,
 
@@ -243,6 +270,46 @@ public final class SplitContainerViewController: UIViewController {
     private func clampedLeftWidth(_ width: CGFloat) -> CGFloat {
         let maxLeft = view.bounds.width - dividerHitWidth - minRightWidth
         return max(minLeftWidth, min(width, maxLeft))
+    }
+
+    // MARK: - 左栏展开 / 折叠（模仿 UISplitViewController 的 showColumn / hideColumn）
+
+    /// 展开/折叠左栏（可带动画）。
+    /// 模仿 UISplitViewController 的 showColumn / hideColumn：不改左栏宽度（避免列表内容回流重排），
+    /// 而是把 leading 约束的 constant 改成负值，让左栏连同分割线整体滑出屏幕左侧；
+    /// 由于分割线、右栏的约束都锚定在左栏上，右栏会自动向左扩展填满空间。
+    /// 读取当前真实状态请用 isLeftSidebarVisible（计算属性）。
+    public func setLeftSidebarVisible(_ visible: Bool, animated: Bool) {
+        let hidden = !visible
+        guard hidden != isSidebarHidden else { return }
+        isSidebarHidden = hidden
+        // 同步详情宿主侧栏按钮的图标。
+        detailHost.setSidebarCollapsed(hidden)
+        applySidebarLayout(animated: animated)
+    }
+
+    /// 在展开/折叠之间切换（带动画）。
+    public func toggleLeftSidebar() {
+        setLeftSidebarVisible(!isLeftSidebarVisible, animated: true)
+    }
+
+    // 把当前 isSidebarHidden 状态套用到约束上（视图加载后才有意义）。
+    private func applySidebarLayout(animated: Bool) {
+        guard isViewLoaded else { return }
+        // 折叠：向左平移“左栏宽度 + 分割线抓取区宽度”，正好完全移出屏幕；展开：回到 0。
+        leftLeadingConstraint.constant = isSidebarHidden
+            ? -(leftWidthConstraint.constant + dividerHitWidth)
+            : 0
+
+        let apply = { [weak self] in
+            guard let self = self else { return }
+            self.view.layoutIfNeeded()
+        }
+        if animated {
+            UIView.animate(withDuration: 0.3, delay: 0, options: [.curveEaseInOut], animations: apply)
+        } else {
+            apply()
+        }
     }
 
     // 复用的“嵌入子控制器”辅助方法（模仿 NewsSplitDemo 的 embed）。
