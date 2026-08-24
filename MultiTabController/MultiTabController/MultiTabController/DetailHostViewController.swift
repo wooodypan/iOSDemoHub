@@ -1,11 +1,11 @@
 import UIKit
 
 // MARK: - 单个详情 Tab 的数据
-// 模仿 NewsSplitDemo 的 DetailTabItem：每个 tab 记录 id、对应的文章、持有的 DetailViewController，
+// 模仿 NewsSplitDemo 的 DetailTabItem：每个 tab 记录 id、对应的内容项、持有的 DetailViewController，
 // 以及它是否为“预览 Tab”（可复用）。
 private struct DetailTabItem {
     let id: String
-    var article: Article?
+    var item: PPContentItem?
     let controller: DetailViewController
     var isPreview: Bool
 }
@@ -101,25 +101,25 @@ public final class DetailHostViewController: UIViewController,
     // MARK: - 对外的“打开文章”入口（由 router 调用）
 
     /// 预览（单击）：复用已有的预览 Tab；没有则新建一个预览 Tab。
-    public func openPreview(_ article: Article) {
+    public func openPreview(_ item: PPContentItem) {
         if let index = tabs.firstIndex(where: { $0.isPreview }) {
-            // 复用预览槽位：把文章加载进去并切过去。
-            load(article: article, into: index)
+            // 复用预览槽位：把内容加载进去并切过去。
+            load(item: item, into: index)
             selectedTabID = tabs[index].id
             refreshUI()
         } else {
             // 没有预览 Tab（当前都是正式 Tab）-> 新建一个预览 Tab。
-            appendTab(for: article, isPreview: true)
+            appendTab(for: item, isPreview: true)
         }
     }
 
     /// 正式 Tab（双击 / 在详情里点“新Tab打开”）：永远新建，不复用。
-    public func openNewTab(_ article: Article? = nil) {
-        appendTab(for: article, isPreview: false)
+    public func openNewTab(_ item: PPContentItem? = nil) {
+        appendTab(for: item, isPreview: false)
     }
 
     /// 兼容 NewsSplitDemo 式 mode 分发（router 直接调这个即可）。
-    public func openArticle(_ item: Article, mode: ArticleOpenMode) {
+    public func open(_ item: PPContentItem, mode: PPContentOpenMode) {
         switch mode {
         case .preview:
             openPreview(item)
@@ -127,7 +127,7 @@ public final class DetailHostViewController: UIViewController,
             openNewTab(item)
         case .newWindow:
             // 新窗口由 router 层决定，这里兜底也处理一下。
-            WindowManager.openNewWindow(article: item)
+            WindowManager.openNewWindow(item: item)
         }
     }
 
@@ -147,7 +147,7 @@ public final class DetailHostViewController: UIViewController,
 
         let tab = tabs[indexPath.item]
         cell.configure(
-            title: tab.article?.title ?? "New Tab",
+            title: tab.item?.title ?? "New Tab",
             selected: tab.id == selectedTabID,
             isPreview: tab.isPreview
         )
@@ -167,7 +167,7 @@ public final class DetailHostViewController: UIViewController,
         layout collectionViewLayout: UICollectionViewLayout,
         sizeForItemAt indexPath: IndexPath
     ) -> CGSize {
-        let title = (tabs[indexPath.item].article?.title ?? "New Tab") as NSString
+        let title = (tabs[indexPath.item].item?.title ?? "New Tab") as NSString
         let width = title.size(withAttributes: [
             .font: UIFont.systemFont(ofSize: 14, weight: .semibold)
         ]).width
@@ -176,17 +176,17 @@ public final class DetailHostViewController: UIViewController,
 
     // MARK: - 私有：Tab 管理
 
-    private func load(article: Article, into index: Int) {
-        tabs[index].article = article
-        tabs[index].controller.configure(with: article)
-        // 载入新文章时把编辑状态复位（configure 内部也会复位 isEdited）。
+    private func load(item: PPContentItem, into index: Int) {
+        tabs[index].item = item
+        tabs[index].controller.configure(with: item)
+        // 载入新内容时把编辑状态复位（configure 内部也会复位 isEdited）。
         tabs[index].controller.isEdited = false
     }
 
-    private func appendTab(for article: Article?, isPreview: Bool) {
+    private func appendTab(for item: PPContentItem?, isPreview: Bool) {
         let controller = DetailViewController()
-        if let article = article {
-            controller.configure(with: article)
+        if let item = item {
+            controller.configure(with: item)
         }
 
         // 详情里“标记为已编辑” -> 把当前这个 Tab 固定为正式 Tab（不再被预览复用）。
@@ -195,12 +195,12 @@ public final class DetailHostViewController: UIViewController,
             self.setPreview(!pinned, for: controller)
         }
         // 详情里“在新Tab打开” -> 由宿主新建一个正式 Tab。
-        controller.onOpenNewTab = { [weak self] article in
-            self?.openNewTab(article)
+        controller.onOpenNewTab = { [weak self] item in
+            self?.openNewTab(item)
         }
         // 详情里“在新窗口打开” -> 交给 WindowManager。
-        controller.onOpenNewWindow = { article in
-            WindowManager.openNewWindow(article: article)
+        controller.onOpenNewWindow = { item in
+            WindowManager.openNewWindow(item: item)
         }
 
         let tabID = UUID().uuidString
@@ -217,7 +217,7 @@ public final class DetailHostViewController: UIViewController,
         ])
         controller.didMove(toParent: self)
 
-        tabs.append(DetailTabItem(id: tabID, article: article, controller: controller, isPreview: isPreview))
+        tabs.append(DetailTabItem(id: tabID, item: item, controller: controller, isPreview: isPreview))
         selectedTabID = tabID
         refreshUI()
     }

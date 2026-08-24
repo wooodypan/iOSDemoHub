@@ -1,34 +1,24 @@
 import UIKit
 
 // MARK: - RootBuilder
-// 应用“根控制器”的工厂：把“按设备选择布局”的逻辑从 AppDelegate 里抽出来。
-// 直接产出最终要当作 window.rootViewController 的控制器，
-// 不再包一层“不显示任何内容的纯路由容器 VC”。
-// 对外公开：作为 CocoaPods 库，外部 App 用 RootBuilder.makeRoot() 即可拿到根控制器。
+// 应用“根控制器”的工厂：按设备选择布局。
+// 具体的左侧列表 / 示例数据由调用方（宿主 App）通过闭包注入，
+// 本工厂只负责“按设备返回对应根控制器”，不感知任何业务内容（保持库纯净）。
 public enum RootBuilder {
 
-    /// 根据当前设备类型，直接产出根控制器：
-    ///   - iPhone：用 TabBarBuilder 构造 “Tech / News” 标签栏（列表包在导航控制器里，便于 push 详情）。
-    ///   - iPad / Mac：直接返回分栏根控制器 SplitContainerViewController（左列表 + 右多 Tab 详情宿主）。
-    public static func makeRoot() -> UIViewController {
+    /// 根据当前设备类型，返回对应的根控制器：
+    ///   - iPhone：调用 iPhoneRoot 构建（通常是 PPTabBarController 包着若干列表）；
+    ///   - iPad / Mac：调用 iPadOrMacRoot 构建（通常是 SplitContainerViewController）。
+    /// 两个闭包均由调用方提供，库本身不包含任何示例列表或数据。
+    public static func makeRoot(
+        iPhoneRoot: @escaping () -> UIViewController,
+        iPadOrMacRoot: @escaping () -> UIViewController
+    ) -> UIViewController {
         switch DeviceHelper.currentLayout {
-        case .iPadOrMac:
-            // iPad / Mac 走分栏：左列表 + 右 DetailHostViewController（浏览器式多 Tab 详情宿主）。
-            return SplitContainerViewController()
-
         case .iPhone:
-            // 构造默认的两个列表（包一层导航控制器，保证 iPhone 上点文章能 push 到详情页）。
-            let techList = ArticleListViewController(articles: DataStore.techArticles, title: "Tech")
-            let newsList = ArticleListViewController(articles: DataStore.newsArticles, title: "News")
-            let techNav = UINavigationController(rootViewController: techList)
-            let newsNav = UINavigationController(rootViewController: newsList)
-
-            // 给列表装上 iPhone 路由：单击/双击都 push 详情，新窗口走 WindowManager。
-            techList.router = PhoneArticleRouter(sourceViewController: techList)
-            newsList.router = PhoneArticleRouter(sourceViewController: newsList)
-
-            // 复用 TabBarBuilder 把数组+标题变成标准 PPTabBarController。
-            return TabBarBuilder.build(viewControllers: [techNav, newsNav], titles: ["Tech", "News"])
+            return iPhoneRoot()
+        case .iPadOrMac:
+            return iPadOrMacRoot()
         }
     }
 }

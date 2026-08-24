@@ -10,9 +10,9 @@ import UIKit
 public class DetailViewController: UIViewController {
 
     // 由外部注入：在当前详情里点“新 Tab 打开”时回调。
-    public var onOpenNewTab: ((Article) -> Void)?
+    public var onOpenNewTab: ((PPContentItem) -> Void)?
     // 由外部注入：在当前详情里点“新窗口打开”时回调。
-    public var onOpenNewWindow: ((Article) -> Void)?
+    public var onOpenNewWindow: ((PPContentItem) -> Void)?
 
     // 当备注输入框内容发生变化时回调：
     //   true  = 用户输入了内容（用于把当前 Tab 固定为正式 Tab）
@@ -23,7 +23,7 @@ public class DetailViewController: UIViewController {
     // 这是“某个 UIViewController 的某个 Bool 值属性”，输入文字后它就变成 true。
     public var isEdited: Bool = false
 
-    private var currentArticle: Article?
+    private var currentItem: PPContentItem?
 
     private let scrollView = UIScrollView()
     private let contentView = UIView()
@@ -43,10 +43,10 @@ public class DetailViewController: UIViewController {
         super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
     }
 
-    // 便捷初始化：可以传入一篇文章（可选），方便外部直接创建并展示内容。
-    public convenience init(article: Article? = nil) {
+    // 便捷初始化：可以传入一个内容项（可选），方便外部直接创建并展示内容。
+    public convenience init(item: PPContentItem? = nil) {
         self.init(nibName: nil, bundle: nil)
-        self.currentArticle = article
+        self.currentItem = item
     }
 
     public required init?(coder: NSCoder) {
@@ -214,9 +214,9 @@ public class DetailViewController: UIViewController {
 
     // MARK: - Configure
 
-    // 对外公开：用一篇文章配置详情页（数据先行，UI 在视图就绪后渲染，避免提前访问控件闪退）。
-    public func configure(with article: Article) {
-        currentArticle = article
+    // 对外公开：用一个内容项配置详情页（数据先行，UI 在视图就绪后渲染，避免提前访问控件闪退）。
+    public func configure(with item: PPContentItem) {
+        currentItem = item
 
         // 切换文章时，把编辑状态重置为 false（不触发编辑回调）
         isEdited = false
@@ -233,12 +233,12 @@ public class DetailViewController: UIViewController {
     // 用 isViewLoaded 守卫：只有视图已经加载（viewDidLoad 跑过、控件已创建），
     // 才真正去设置控件；否则只保存数据，等 viewDidLoad 末尾再调用本方法。
     private func applyArticleToUI() {
-        guard isViewLoaded, let article = currentArticle else { return }
+        guard isViewLoaded, let item = currentItem else { return }
 
-        categoryLabel.text = article.category.uppercased()
-        titleLabel.text = article.title
-        bodyLabel.text = article.body
-        title = article.title
+        categoryLabel.text = item.category.uppercased()
+        titleLabel.text = item.title
+        bodyLabel.text = item.body
+        title = item.title
         updateVisibility(hasArticle: true)
 
         // iPhone 下，"新Tab"/"新窗口"按钮隐藏（无意义）
@@ -248,12 +248,12 @@ public class DetailViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func openNewTab() {
-        guard let article = currentArticle else { return }
-        onOpenNewTab?(article)
+        guard let item = currentItem else { return }
+        onOpenNewTab?(item)
     }
 
     @objc private func openNewWindow() {
-        guard let article = currentArticle else { return }
-        onOpenNewWindow?(article)
+        guard let item = currentItem else { return }
+        onOpenNewWindow?(item)
     }
 }

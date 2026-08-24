@@ -1,29 +1,28 @@
 import UIKit
 
-// MARK: - ArticleOpenMode
-// 模仿 NewsSplitDemo 的“打开文章”意图枚举。
+// MARK: - PPContentOpenMode
+// 模仿 NewsSplitDemo 的“打开内容”意图枚举。
 // 列表页只管发出“想怎么打开”的意图，具体落到哪个设备环境由 router 决定。
 //   - preview：预览（单击）。在右侧详情宿主里复用“预览槽位”，对应 VS Code 的 Preview Tab。
 //   - newTab ：正式 Tab（双击 / 在详情里点“新Tab打开”）。不复用，永远新建。
 //   - newWindow：新窗口打开（Mac Catalyst 多窗口，其它环境降级为新 Tab）。
-// “打开文章”的意图枚举：公开，供外部在调用路由时使用。
-public enum ArticleOpenMode {
+public enum PPContentOpenMode {
     case preview
     case newTab
     case newWindow
 }
 
-// MARK: - ArticleOpenRouting
-// 模仿 NewsSplitDemo 的路由协议：把“列表点开文章”从具体展示环境中解耦。
+// MARK: - PPContentRouting
+// 模仿 NewsSplitDemo 的路由协议：把“列表点开内容”从具体展示环境中解耦。
 // 列表页只持有这个协议，不再关心自己处于 iPhone 导航栈、还是 iPad 分栏、还是 Mac Catalyst。
-public protocol ArticleOpenRouting: AnyObject {
-    func openArticle(_ item: Article, mode: ArticleOpenMode)
+public protocol PPContentRouting: AnyObject {
+    func open(_ item: PPContentItem, mode: PPContentOpenMode)
 }
 
-// MARK: - PhoneArticleRouter
+// MARK: - PPPhoneContentRouter
 // iPhone 环境路由：列表在导航栈里，直接 push 详情页即可。
 // 模仿 NewsSplitDemo 的 PhoneArticleRouter，但咱用 WindowManager 处理新窗口（无 WindowLauncher 依赖）。
-public final class PhoneArticleRouter: ArticleOpenRouting {
+public final class PPPhoneContentRouter: PPContentRouting {
     // 弱引用持有来源 VC，用于拿到它的 navigationController 来 push。
     public weak var sourceViewController: UIViewController?
 
@@ -31,7 +30,7 @@ public final class PhoneArticleRouter: ArticleOpenRouting {
         self.sourceViewController = sourceViewController
     }
 
-    public func openArticle(_ item: Article, mode: ArticleOpenMode) {
+    public func open(_ item: PPContentItem, mode: PPContentOpenMode) {
         // 兜底：拿不到导航控制器就不处理。
         guard let navigationController = sourceViewController?.navigationController else {
             return
@@ -49,31 +48,31 @@ public final class PhoneArticleRouter: ArticleOpenRouting {
 
         case .newWindow:
             // 新窗口：走 WindowManager 的模态降级实现。
-            WindowManager.openNewWindow(article: item)
+            WindowManager.openNewWindow(item: item)
         }
     }
 }
 
-// MARK: - SplitArticleRouter
-// iPad / Mac 分栏环境路由：把“打开文章”转交给右侧的 DetailHostViewController 处理。
+// MARK: - PPSplitContentRouter
+// iPad / Mac 分栏环境路由：把“打开内容”转交给右侧的 DetailHostViewController 处理。
 // 模仿 NewsSplitDemo 的 SplitArticleRouter，但咱用 WindowManager 替代 WindowLauncher。
-public final class SplitArticleRouter: ArticleOpenRouting {
-    // 由 SplitContainerViewController 注入：给定文章，返回右侧当前可见的详情宿主。
-    public var detailHostResolver: ((Article) -> DetailHostViewController?)?
+public final class PPSplitContentRouter: PPContentRouting {
+    // 由 SplitContainerViewController 注入：给定内容项，返回右侧当前可见的详情宿主。
+    public var detailHostResolver: ((PPContentItem) -> DetailHostViewController?)?
 
     // 提供公开的无参初始化器，方便外部自行创建并注入。
     public init() {}
 
-    public func openArticle(_ item: Article, mode: ArticleOpenMode) {
+    public func open(_ item: PPContentItem, mode: PPContentOpenMode) {
         switch mode {
         case .preview, .newTab:
             // 交给右侧详情宿主，由它按 VS Code 策略决定复用还是新建。
-            detailHostResolver?(item)?.openArticle(item, mode: mode)
+            detailHostResolver?(item)?.open(item, mode: mode)
 
         case .newWindow:
             #if targetEnvironment(macCatalyst)
             // Mac Catalyst 支持多窗口，走新窗口。
-            WindowManager.openNewWindow(article: item)
+            WindowManager.openNewWindow(item: item)
             #else
             // 其它环境暂不支持真多窗口，降级为在当前宿主里开新 Tab。
             detailHostResolver?(item)?.openNewTab(item)

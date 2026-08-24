@@ -9,7 +9,10 @@ import UIKit
 
 // @main 标记应用入口。
 // 本工程刻意不使用 UISceneDelegate（无 Scene 生命周期），
-// 因此在 AppDelegate 里手动创建 UIWindow，并把 RootBuilder 产出的根控制器设为根。
+// 因此在 AppDelegate 里手动创建 UIWindow，并把根控制器设为窗口根。
+//
+// 说明：ArticleListViewController / DataStore 是“示例 / Demo”代码，
+// 已从库源码中拆出，放在与 AppDelegate 平级的宿主层；库本体不依赖它们。
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
@@ -21,12 +24,49 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // 1. 创建窗口（传统生命周期，由我们自行管理）
         window = UIWindow(frame: UIScreen.main.bounds)
 
-        // 2. 由 RootBuilder 根据设备直接产出根控制器：
-        //    iPhone    -> PPTabBarController（Tech / News）；
-        //    iPad / Mac -> SplitContainerViewController（左列表 + 右 DetailHostViewController 多 Tab 详情宿主）。
-        window?.rootViewController = RootBuilder.makeRoot()
+        // 2. iPhone 根：两个列表包进标签栏，点内容 push 详情。
+        let iPhoneRoot: () -> UIViewController = {
+            let techList = ArticleListViewController(articles: DataStore.techArticles, title: "Tech")
+            let newsList = ArticleListViewController(articles: DataStore.newsArticles, title: "News")
+            let techNav = UINavigationController(rootViewController: techList)
+            let newsNav = UINavigationController(rootViewController: newsList)
 
-        // 3. 让窗口成为主窗口并显示出来
+            techList.router = PPPhoneContentRouter(sourceViewController: techList)
+            newsList.router = PPPhoneContentRouter(sourceViewController: newsList)
+
+            return TabBarBuilder.build(viewControllers: [techNav, newsNav], titles: ["Tech", "News"])
+        }
+
+        // 3. iPad / Mac 根：左侧列表 + 右侧多 Tab 详情宿主。
+        let iPadOrMacRoot: () -> UIViewController = {
+            let router = PPSplitContentRouter()
+            let categories: [(title: String, items: [PPContentItem])] = [
+                ("Tech", DataStore.techArticles),
+                ("News", DataStore.newsArticles)
+            ]
+            let lists = categories.map { title, items in
+                let list = ArticleListViewController(articles: items, title: title)
+                list.router = router
+                return list
+            }
+            let configurations = categories.map { title, _ in
+                PPTabBarController.ButtonConfiguration(title: title, image: nil)
+            }
+            let sidebar = PPTabBarController(
+                viewControllers: lists,
+                buttonConfigurations: configurations,
+                initialIndex: 0
+            )
+            return SplitContainerViewController(leftViewController: sidebar, router: router)
+        }
+
+        // 4. 由 RootBuilder 根据设备分发到上面两套根之一。
+        window?.rootViewController = RootBuilder.makeRoot(
+            iPhoneRoot: iPhoneRoot,
+            iPadOrMacRoot: iPadOrMacRoot
+        )
+
+        // 5. 让窗口成为主窗口并显示出来
         window?.makeKeyAndVisible()
 
         return true

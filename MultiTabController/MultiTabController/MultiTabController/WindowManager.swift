@@ -4,30 +4,30 @@ import UIKit
 // 负责管理新窗口的打开（Mac Catalyst / iPadOS 13+）
 // 新窗口打开后，关闭即销毁（不保活）
 //
-// 对外公开 openNewWindow：外部如果自己实现路由（ArticleOpenRouting），
+// 对外公开 openNewWindow：外部如果自己实现路由（PPContentRouting），
 // 也可以在“新窗口”模式下直接调用这个能力。
 
 public struct WindowManager {
 
-    // 存储新窗口对应的文章（通过 userInfo 传递）
+    // 存储新窗口对应的内容项（通过 userInfo 传递）
     // 注意：多窗口在 UISceneDelegate 中更优雅，但本工程禁用 SceneDelegate
     // 在 iOS 13 以下或 Catalyst 下，回退到模态弹出
 
-    public static func openNewWindow(article: Article) {
+    public static func openNewWindow(item: PPContentItem) {
         if #available(iOS 13.0, *) {
             // 优先尝试 UIScene 多窗口（需在 Info.plist 配置 UIApplicationSupportsMultipleScenes）
             // 由于本工程不使用 SceneDelegate，降级为模态弹出
-            openAsModal(article: article)
+            openAsModal(item: item)
         } else {
-            openAsModal(article: article)
+            openAsModal(item: item)
         }
     }
 
-    private static func openAsModal(article: Article) {
+    private static func openAsModal(item: PPContentItem) {
         // 找到当前最顶层的 ViewController
         guard let topVC = topViewController() else { return }
 
-        let windowVC = NewWindowViewController(article: article)
+        let windowVC = NewWindowViewController(item: item)
         let nav = UINavigationController(rootViewController: windowVC)
         nav.modalPresentationStyle = .pageSheet
         topVC.present(nav, animated: true)
@@ -69,17 +69,17 @@ public struct WindowManager {
 // 新窗口（模态）内的详情页，关闭即销毁，不保活
 class NewWindowViewController: UIViewController {
 
-    private let article: Article
+    private let item: PPContentItem
     private let titleLabel = UILabel()
     private let categoryLabel = UILabel()
     private let bodyLabel = UILabel()
     private let scrollView = UIScrollView()
     private let contentView = UIView()
 
-    init(article: Article) {
-        self.article = article
+    init(item: PPContentItem) {
+        self.item = item
         super.init(nibName: nil, bundle: nil)
-        self.title = article.title
+        self.title = item.title
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -127,17 +127,17 @@ class NewWindowViewController: UIViewController {
             contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor)
         ])
 
-        categoryLabel.text = article.category.uppercased()
+        categoryLabel.text = item.category.uppercased()
         categoryLabel.font = UIFont.systemFont(ofSize: 12, weight: .semibold)
         categoryLabel.textColor = .systemBlue
         categoryLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        titleLabel.text = article.title
+        titleLabel.text = item.title
         titleLabel.font = UIFont.systemFont(ofSize: 22, weight: .bold)
         titleLabel.numberOfLines = 0
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        bodyLabel.text = article.body
+        bodyLabel.text = item.body
         bodyLabel.font = UIFont.systemFont(ofSize: 15)
         bodyLabel.numberOfLines = 0
         bodyLabel.textColor = .pp_secondaryLabel

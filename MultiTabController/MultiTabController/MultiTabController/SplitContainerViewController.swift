@@ -7,9 +7,10 @@ import AppKit
 
 // MARK: - SplitContainerViewController
 // 模仿 NewsSplitDemo 的 SplitContainerViewController：iPad / Mac Catalyst 的根控制器。
-// 左栏 = PPTabBarController（Tech / News 两个列表，各自装上 SplitArticleRouter）；
+// 左栏 = 由调用方注入的任意 UIViewController（例如 PPTabBarController 包着若干列表，各自装上 PPSplitContentRouter）；
 // 右栏 = 一个 DetailHostViewController（右侧多 Tab 详情宿主，承载 VS Code 预览/正式策略）。
 // 这样“浏览器式多 Tab”被下沉到右侧详情宿主里，左栏在切 Tab 时始终不动。
+// 本容器只负责把左侧“打开内容”的意图转交右侧详情宿主，不感知任何具体业务内容（库保持纯净）。
 public final class SplitContainerViewController: UIViewController {
 
     private let leftContainerView = UIView()
@@ -52,40 +53,24 @@ public final class SplitContainerViewController: UIViewController {
     // 右侧唯一的详情宿主（多 Tab 都在它里面）。
     private let detailHost = DetailHostViewController()
 
-    // 分栏路由：列表发出的“打开文章”意图由它转交给右侧 detailHost。
-    private let splitRouter: SplitArticleRouter
+    // 分栏路由：列表发出的“打开内容”意图由它转交给右侧 detailHost。
+    private let splitRouter: PPSplitContentRouter
 
     // 左栏的导航控制器（包住 PPTabBarController，提供导航条）。
     private let leftNavigationController: UINavigationController
 
-    public init() {
-        let router = SplitArticleRouter()
+    /// 用外部提供的左侧内容控制器（例如 PPTabBarController 包着若干列表）与分栏路由初始化。
+    /// 本容器不创建任何业务列表或数据，只负责：
+    ///   1. 把 router.detailHostResolver 指向右侧详情宿主，使“打开内容”能落到右侧；
+    ///   2. 响应右侧详情宿主侧栏按钮的展开/折叠请求。
+    /// 列表控制器及其 router 由调用方（宿主 App）自行构建。
+    public init(leftViewController: UIViewController, router: PPSplitContentRouter) {
         self.splitRouter = router
-
-        // 左栏两个分类：Tech / News，各自一个列表，装上同一个分栏路由。
-        let categories: [(title: String, articles: [Article])] = [
-            ("Tech", DataStore.techArticles),
-            ("News", DataStore.newsArticles)
-        ]
-        let listControllers = categories.map { category in
-            let list = ArticleListViewController(articles: category.articles, title: category.title)
-            list.router = router
-            return list
-        }
-        let buttonConfigurations = categories.map { category in
-            PPTabBarController.ButtonConfiguration(title: category.title, image: nil)
-        }
-        let sidebarController = PPTabBarController(
-            viewControllers: listControllers,
-            buttonConfigurations: buttonConfigurations,
-            initialIndex: 0
-        )
-
-        self.leftNavigationController = UINavigationController(rootViewController: sidebarController)
+        self.leftNavigationController = UINavigationController(rootViewController: leftViewController)
 
         super.init(nibName: nil, bundle: nil)
 
-        // 把“打开文章”解析到右侧的详情宿主。
+        // 把“打开内容”解析到右侧的详情宿主。
         router.detailHostResolver = { [weak self] _ in
             self?.detailHost
         }

@@ -26,27 +26,36 @@ DetailViewController顶部左上角加一个按钮，可以隐藏ArticleListView
 //   右侧：DetailViewController
 ## 工程结构
 
+库源码与宿主（Demo）分层：
+
 ```
-MultiTabDemo/
-├── AppDelegate.swift                   # 入口，无 UISceneDelegate
-├── DeviceHelper.swift                  # 设备布局判断
-├── DataModel.swift                     # 数据模型
-├── RootBuilder.swift                  # 根控制器工厂，按设备直接产出 rootViewController
-├── TabBarBuilder.swift                # 组件化：传入 [UIViewController]+标题 → PPTabBarController
-├── SplitContainerViewController.swift   # iPad/Mac 根：左右分栏（左 PPTabBarController + 右 DetailHostViewController）
-├── DetailHostViewController.swift       # 右侧多 Tab 详情宿主（含 VS Code 预览/正式策略、保活）
-├── ArticleRouters.swift                 # 协议化路由：ArticleOpenMode / ArticleOpenRouting / Phone·Split Router
-├── ArticleListViewController.swift     # 列表页（UITableView）
-├── DetailViewController.swift          # 详情页
-├── WindowManager.swift                 # 新窗口管理
-└── Info.plist
+MultiTabController/                      # 仓库根（podspec / Package.swift 所在）
+├── MultiTabController/                  # 宿主层（App target，与 AppDelegate 平级）
+│   ├── AppDelegate.swift                # 入口，无 UISceneDelegate；用 RootBuilder 分发 iPhone / iPad·Mac 根
+│   ├── ArticleListViewController.swift  # 示例列表页（Demo，不随库发布）
+│   ├── DataStore.swift                  # 示例数据源（Demo，不随库发布）
+│   ├── Info.plist / Assets.xcassets / Base.lproj
+│   └── MultiTabController/              # 库源码目录（被 pod / SPM 打包）
+│       ├── SplitContainerViewController.swift  # iPad/Mac 根：左右分栏（左栏注入 + 右 DetailHostViewController）
+│       ├── DetailHostViewController.swift      # 右侧多 Tab 详情宿主（含 VS Code 预览/正式策略、保活）
+│       ├── DetailViewController.swift          # 详情页
+│       ├── PPContentItem.swift                 # 内容模型（id/title/body/category）
+│       ├── PPContentRouters.swift              # 协议化路由：PPContentOpenMode / PPContentRouting / Phone·Split Router
+│       ├── RootBuilder.swift                    # 根控制器工厂：按设备分发 iPhone / iPad·Mac 根
+│       ├── TabBarBuilder.swift                  # 组件化：传入 [UIViewController]+标题 → PPTabBarController
+│       ├── DeviceHelper.swift                   # 设备布局判断
+│       ├── WindowManager.swift                  # 新窗口管理
+│       ├── UIColor+Compatibility.swift          # 颜色兼容
+│       ├── PPTabBarController.swift             # 内部标签栏实现（internal，未对外公开）
+│       └── README.md
+└── NewsSplitDemo/                       # 参考项目（旧版命名，独立保留作对比）
 ```
 
 ## 布局策略
 
 ### iPhone
 ```
-RootBuilder.makeRoot() → PPTabBarController（由 TabBarBuilder 构造，直接当 root）
+RootBuilder.makeRoot(iPhoneRoot:iPadOrMacRoot:) → iPhone 分支返回 PPTabBarController（由 TabBarBuilder 构造）
         ├── Tab 1: UINavigationController → ArticleListViewController
         │              点击行 → pushViewController(DetailViewController)
         └── Tab 2: UINavigationController → ArticleListViewController
@@ -54,7 +63,7 @@ RootBuilder.makeRoot() → PPTabBarController（由 TabBarBuilder 构造，直�
 
 ### iPad / Mac Catalyst
 ```
-RootBuilder.makeRoot() → SplitContainerViewController（直接当 root，左右分栏）
+RootBuilder.makeRoot(iPhoneRoot:iPadOrMacRoot:) → iPad·Mac 分支返回 SplitContainerViewController（左右分栏）
         ├── 左栏 [leftContainerView]
         │     └── PPTabBarController (addChild)
         │           ├── Tech: ArticleListViewController（router=splitRouter）

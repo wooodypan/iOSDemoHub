@@ -18,11 +18,11 @@ let package = Package(
     ],
     targets: [
         // 源码目录与 podspec 的 source_files 指向同一处：
-        // 只打包库源码（MultiTabController/MultiTabController/ 下的 swift 文件），
-        // 不含 App 宿主层（AppDelegate / Info.plist / Assets）与 NewsSplitDemo。
+        // 只打包库源码（MultiTabController/MultiTabController/MultiTabController/ 下的 swift 文件），
+        // 不含 App 宿主层（AppDelegate / ArticleListViewController / DataStore / Info.plist / Assets）与 NewsSplitDemo。
         .target(
             name: "MultiTabController",
-            path: "MultiTabController/MultiTabController",
+            path: "MultiTabController/MultiTabController/MultiTabController",
             // 该目录下的 README.md 是给开发者的说明文档，不属于编译单元，
             // 不排除的话 SPM 会告警 "unhandled file"。
             exclude: ["README.md"]
