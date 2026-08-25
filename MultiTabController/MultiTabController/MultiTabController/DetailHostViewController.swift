@@ -2,8 +2,8 @@ import UIKit
 
 // MARK: - 单个详情 Tab 的数据
 // 每个 tab 记录 id、对应的内容项、持有的内容页（PPContentDisplaying），
-// 以及它是否为“预览 Tab”（可复用）。
-// controller 是强引用——这正是多 Tab“保活”的本质：控制器不销毁，状态就还在。
+// 以及它是否为”预览 Tab”（可复用）。
+// controller 是强引用——这正是多 Tab”保活”的本质：控制器不销毁，状态就还在。
 private struct DetailTabItem {
     let id: String
     var item: PPContentItem?
@@ -12,12 +12,14 @@ private struct DetailTabItem {
 }
 
 // MARK: - DetailHostViewController
-// 右侧多 Tab 详情宿主：承载 VS Code 式“复用 Tab 策略”：
-//   - preview（单击）：复用已有的“预览 Tab”；没有则新建一个预览 Tab。
+// 右侧多 Tab 详情宿主：承载 VS Code 式”复用 Tab 策略”：
+//   - preview（单击）：复用已有的”预览 Tab”；没有则新建一个预览 Tab。
 //   - newTab（双击 / “新Tab打开”）：永远新建正式 Tab，不复用。
-//   - 内容页上报“已编辑”：把当前 Tab 固定为正式 Tab（不再被预览复用覆盖）。
+//   - 内容页上报”已编辑”：把当前 Tab 固定为正式 Tab（不再被预览复用覆盖）。
 // 库本身不认识 Tab 里显示什么：每个 Tab 的内容页由外部通过 PPContentViewControllerProvider 提供，
-// 只要求它满足 PPContentDisplaying。多个内容页作为子控制器保活（addChild），切换时只隐藏/显示。
+// 只要求它满足 PPContentDisplaying。多个内容页作为子控制器保活（addChild）；
+// 视图层面只有当前选中 tab 的 view 挂在视图树上，切走即 removeFromSuperview、切回再 add，
+// 这样 tab 再多也只有 1 个 view 参与 layout（controller 不销毁，状态保活不受影响）。
 public final class DetailHostViewController: UIViewController,
     UICollectionViewDataSource,
     UICollectionViewDelegateFlowLayout {
@@ -89,6 +91,9 @@ public final class DetailHostViewController: UIViewController,
         view.backgroundColor = .white
         setupViews()
         refreshUI()
+        // 首次进入做一次全量同步（此时必无 Tab，代价为零）；
+        // 之后的增删改都走精细化的 insert/delete/reload item。
+        collectionView.reloadData()
     }
 
     // MARK: - 侧栏按钮状态（由父容器在展开/折叠后调用，保持图标与状态一致）
@@ -121,9 +126,17 @@ public final class DetailHostViewController: UIViewController,
     public func openPreview(_ item: PPContentItem) {
         if let index = tabs.firstIndex(where: { $0.isPreview }) {
             // 复用预览槽位：把内容加载进去并切过去。
+            let previousID = selectedTabID
             load(item: item, into: index)
             selectedTabID = tabs[index].id
             refreshUI()
+
+            // 被复用的预览 Tab 标题变了且成为选中：精细化只刷受影响的 cell。
+            var indexPaths = [IndexPath(item: index, section: 0)]
+            if let previousIndex = tabBarIndexPath(ofTabID: previousID), previousIndex.item != index {
+                indexPaths.append(previousIndex)
+            }
+            updateTabBar(reload: indexPaths, insert: [], delete: [])
         } else {
             // 没有预览 Tab（当前都是正式 Tab）-> 新建一个预览 Tab。
             appendTab(for: item, isPreview: true)
@@ -175,8 +188,16 @@ public final class DetailHostViewController: UIViewController,
     }
 
     public func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let previousID = selectedTabID
         selectedTabID = tabs[indexPath.item].id
         refreshUI()
+
+        // 切 tab 只改变选中态：精细化只 reload 新旧两个 cell，不全量 reloadData。
+        var indexPaths = [indexPath]
+        if let previousIndex = tabBarIndexPath(ofTabID: previousID), previousIndex != indexPath {
+            indexPaths.append(previousIndex)
+        }
+        updateTabBar(reload: indexPaths, insert: [], delete: [])
     }
 
     public func collectionView(
@@ -195,63 +216,102 @@ public final class DetailHostViewController: UIViewController,
 
     private func load(item: PPContentItem, into index: Int) {
         tabs[index].item = item
-        // 载入新内容：configure 内部负责渲染并复位内容页自身的编辑态。
+        // 载入新内容：协议约定 configure 内部会把编辑状态复位为未编辑，
+        // 宿主复用预览 Tab 时本就是预览态，无需在这里另外复位。
         tabs[index].controller.configure(with: item)
     }
 
     private func appendTab(for item: PPContentItem?, isPreview: Bool) {
+        // 通过外部注入的工厂创建内容页（库不认识具体内容，显示什么由集成方决定）。
         let controller = contentViewControllerProvider()
-        // 先注入宿主通道，再 configure：这样内容页在 configure 时就能依据“有无宿主”决定 UI
-        // （例如无宿主时隐藏“新 Tab / 新窗口”入口）。内容页应以 weak 持有它，避免循环引用。
+        // 注入上报通道：内容页通过它上报“编辑态变化 / 想以某种方式打开内容”。
         controller.contentHost = self
         if let item = item {
             controller.configure(with: item)
         }
 
         let tabID = UUID().uuidString
+        // 记住原选中，追加后要取消它的选中样式。
+        let previousID = selectedTabID
 
-        // 作为子控制器保活。
+        // 作为子控制器保活（只 addChild，view 的挂载/拆卸由 refreshUI 统一管理）。
         addChild(controller)
-        controller.view.translatesAutoresizingMaskIntoConstraints = false
-        contentContainerView.addSubview(controller.view)
-        NSLayoutConstraint.activate([
-            controller.view.topAnchor.constraint(equalTo: contentContainerView.topAnchor),
-            controller.view.leadingAnchor.constraint(equalTo: contentContainerView.leadingAnchor),
-            controller.view.trailingAnchor.constraint(equalTo: contentContainerView.trailingAnchor),
-            controller.view.bottomAnchor.constraint(equalTo: contentContainerView.bottomAnchor)
-        ])
         controller.didMove(toParent: self)
 
         tabs.append(DetailTabItem(id: tabID, item: item, controller: controller, isPreview: isPreview))
         selectedTabID = tabID
         refreshUI()
+
+        // 精细化：插入新 cell；原选中 cell 取消选中态。
+        updateTabBar(
+            reload: tabBarIndexPath(ofTabID: previousID).map { [$0] } ?? [],
+            insert: [IndexPath(item: tabs.count - 1, section: 0)],
+            delete: []
+        )
     }
 
     private func closeTab(withID id: String) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
 
+        let wasSelected = selectedTabID == id
         let tab = tabs.remove(at: index)
+        // view 可能还挂在视图树上（它是被选中态关掉的），先拆下来再移除子控制器。
+        detachContentView(of: tab.controller)
         tab.controller.willMove(toParent: nil)
-        tab.controller.view.removeFromSuperview()
         tab.controller.removeFromParent()
 
         if tabs.isEmpty {
             selectedTabID = nil
-        } else if selectedTabID == id {
+        } else if wasSelected {
             // 关掉的是当前 Tab，则切到相邻的那个。
             let nextIndex = min(index, tabs.count - 1)
             selectedTabID = tabs[nextIndex].id
         }
 
         refreshUI()
+
+        // 精细化：删除被关的 cell；若选中转移到了相邻 Tab，顺便刷新它的选中样式。
+        updateTabBar(
+            reload: wasSelected ? tabBarIndexPath(ofTabID: selectedTabID).map { [$0] } ?? [] : [],
+            insert: [],
+            delete: [IndexPath(item: index, section: 0)]
+        )
     }
 
     // 把某个 Tab 设为预览/正式，并刷新对应 cell 的样式。
-    // 用 UIViewController 作参数：PPContentDisplaying 是 class-bound 协议，=== 恒等比较照常可用。
     private func setPreview(_ value: Bool, for controller: UIViewController) {
         guard let index = tabs.firstIndex(where: { $0.controller === controller }) else { return }
         tabs[index].isPreview = value
         collectionView.reloadItems(at: [IndexPath(item: index, section: 0)])
+    }
+
+    // MARK: - 私有：Tab 条的精细化更新
+
+    // 按 tab id 查它在 Tab 条里的位置（不在/为 nil 时返回 nil）。
+    private func tabBarIndexPath(ofTabID id: String?) -> IndexPath? {
+        guard let id = id, let index = tabs.firstIndex(where: { $0.id == id }) else { return nil }
+        return IndexPath(item: index, section: 0)
+    }
+
+    // Tab 条更新遵循“能少刷就少刷”：切 tab / 开 / 关都不全量 reloadData，
+    // 而是按需 reload / insert / delete 受影响的 item，避免全部 cell 重建与全量布局。
+    // 滚动放在 performBatchUpdates 的 completion 里：此时布局已就绪，
+    // 无需再 DispatchQueue.main.async 延后滚动。
+    private func updateTabBar(reload: [IndexPath], insert: [IndexPath], delete: [IndexPath]) {
+        collectionView.performBatchUpdates({ [weak self] in
+            guard let self = self else { return }
+            if !reload.isEmpty { self.collectionView.reloadItems(at: reload) }
+            if !delete.isEmpty { self.collectionView.deleteItems(at: delete) }
+            if !insert.isEmpty { self.collectionView.insertItems(at: insert) }
+        }) { [weak self] _ in
+            self?.scrollToSelectedItem(animated: true)
+        }
+    }
+
+    // 把选中的 Tab 滚动到可见区域（无选中项时什么都不做）。
+    private func scrollToSelectedItem(animated: Bool) {
+        guard let indexPath = tabBarIndexPath(ofTabID: selectedTabID) else { return }
+        collectionView.scrollToItem(at: indexPath, at: .centeredHorizontally, animated: animated)
     }
 
     // MARK: - 私有：视图与刷新
@@ -313,6 +373,43 @@ public final class DetailHostViewController: UIViewController,
         ])
     }
 
+    // MARK: - 私有：内容视图的挂载 / 拆卸（视图层面的保活优化）
+
+    // 保活只需保住 controller（状态），不需要 view 常驻视图树：
+    // 只有当前选中 tab 的 view 挂在 contentContainerView 上，其余全部 removeFromSuperview。
+    // tab 一多，参与 layout 的内容视图始终只有 1 个。
+    private func mountContentView(of controller: PPContentDisplaying) {
+        // 通过协议存在类型访问 UIViewController.view 得到的是可选值，先解包。
+        guard let contentView = controller.view else { return }
+        // 已在树上就不重复挂（如连续 refreshUI），避免重复加约束。
+        guard contentView.superview !== contentContainerView else { return }
+        contentView.translatesAutoresizingMaskIntoConstraints = false
+        contentContainerView.addSubview(contentView)
+        NSLayoutConstraint.activate([
+            contentView.topAnchor.constraint(equalTo: contentContainerView.topAnchor),
+            contentView.leadingAnchor.constraint(equalTo: contentContainerView.leadingAnchor),
+            contentView.trailingAnchor.constraint(equalTo: contentContainerView.trailingAnchor),
+            contentView.bottomAnchor.constraint(equalTo: contentContainerView.bottomAnchor)
+        ])
+        // view 是手动拆装而非系统容器切换，UIKit 不会自动重发 appearance 回调，
+        // 这里补上，让内容页的 viewWillAppear/viewDidAppear 时机与语义对齐。
+        controller.beginAppearanceTransition(true, animated: false)
+        controller.endAppearanceTransition()
+    }
+
+    // 切走/关闭时把 view 从视图树上拆下来：子控制器关系（addChild）不动，状态照旧保活；
+    // view 的约束随 removeFromSuperview 自动失效，下次挂载时重建。
+    private func detachContentView(of controller: PPContentDisplaying) {
+        guard let contentView = controller.view else { return }
+        guard contentView.superview === contentContainerView else { return }
+        // 对称地补上“即将消失”的 appearance 回调。
+        controller.beginAppearanceTransition(false, animated: false)
+        contentView.removeFromSuperview()
+        controller.endAppearanceTransition()
+    }
+
+    // 只负责“壳”与内容视图：占位/分隔线/高度的显隐，以及内容视图的挂载/拆卸。
+    // Tab 条（collectionView）的数据更新不在这里做，由各调用点按需精细化处理。
     private func refreshUI() {
         let hasTabs = !tabs.isEmpty
         collectionView.isHidden = !hasTabs
@@ -321,39 +418,33 @@ public final class DetailHostViewController: UIViewController,
         collectionViewHeightConstraint?.constant = hasTabs ? 44 : 0
         separatorHeightConstraint?.constant = hasTabs ? 1 : 0
 
+        // 只挂载选中 tab 的 view，其余全部拆下（替代旧实现“全部挂树 + isHidden”）。
         for tab in tabs {
-            let isSelected = tab.id == selectedTabID
-            tab.controller.view.isHidden = !isSelected
-            if isSelected {
-                contentContainerView.bringSubviewToFront(tab.controller.view)
-            }
-        }
-
-        collectionView.reloadData()
-
-        if let selectedIndex = tabs.firstIndex(where: { $0.id == selectedTabID }) {
-            let indexPath = IndexPath(item: selectedIndex, section: 0)
-            DispatchQueue.main.async { [weak self] in
-                self?.collectionView.scrollToItem(at: indexPath, at: .centeredHorizontally, animated: true)
+            if tab.id == selectedTabID {
+                mountContentView(of: tab.controller)
+            } else {
+                detachContentView(of: tab.controller)
             }
         }
     }
 }
 
-// MARK: - PPContentHosting
-// 接收内容页上报的意图，翻译成本宿主的 Tab 操作。
+// MARK: - PPContentHosting（内容页 -> 宿主的上报通道）
+// 内容页通过宿主注入的 contentHost 上报意图，宿主在这里统一决策，
+// 替代旧实现里每个 Tab 各自绑三个闭包的做法。
 extension DetailHostViewController: PPContentHosting {
 
-    // 内容页编辑态变化：已编辑 -> 把承载它的 Tab 固定为正式 Tab（isPreview = false）。
+    // 内容页上报“编辑态变化”：编辑过的内容页把所在 Tab 固定为正式 Tab（不再被预览复用覆盖）。
     public func contentViewController(_ contentViewController: UIViewController,
                                       didChangeEditedState isEdited: Bool) {
         setPreview(!isEdited, for: contentViewController)
     }
 
-    // 内容页请求打开一个内容项：直接复用本宿主既有的 mode 分发（含 .newWindow 的兜底）。
+    // 内容页请求以指定方式打开一个内容项（详情页里的“在新 Tab / 新窗口打开”入口）。
     public func contentViewController(_ contentViewController: UIViewController,
                                       requestsOpen item: PPContentItem,
                                       mode: PPContentOpenMode) {
+        // 复用统一的 mode 分发：.newWindow 由 open(_:mode:) 兜底交给 WindowManager。
         open(item, mode: mode)
     }
 }

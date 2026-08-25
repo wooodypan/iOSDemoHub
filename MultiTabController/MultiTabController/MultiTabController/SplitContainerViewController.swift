@@ -50,7 +50,7 @@ public final class SplitContainerViewController: UIViewController {
     private let minLeftWidth: CGFloat = 220     // 左栏最小宽度
     private let minRightWidth: CGFloat = 320    // 右栏最小宽度
 
-    // 右侧唯一的详情宿主（多 Tab 都在它里面）。内容页由外部注入的工厂提供。
+    // 右侧唯一的详情宿主（多 Tab 都在它里面）。内容页工厂由外部注入，转交给它。
     private let detailHost: DetailHostViewController
 
     // 分栏路由：列表发出的“打开内容”意图由它转交给右侧 detailHost。
@@ -59,15 +59,11 @@ public final class SplitContainerViewController: UIViewController {
     // 左栏的导航控制器（包住 PPTabBarController，提供导航条）。
     private let leftNavigationController: UINavigationController
 
-    /// 用外部提供的左侧内容控制器、分栏路由与内容页工厂初始化。
-    /// 本容器不创建任何业务列表、数据或内容页，只负责：
+    /// 用外部提供的左侧内容控制器（例如 PPTabBarController 包着若干列表）、分栏路由与内容页工厂初始化。
+    /// 本容器不创建任何业务列表或数据，只负责：
     ///   1. 把 router.detailHostResolver 指向右侧详情宿主，使“打开内容”能落到右侧；
     ///   2. 响应右侧详情宿主侧栏按钮的展开/折叠请求。
     /// 列表控制器及其 router 由调用方（宿主 App）自行构建。
-    /// - Parameters:
-    ///   - leftViewController: 左栏内容（例如 PPTabBarController 包着若干列表）。
-    ///   - router: 分栏路由，列表发出的“打开内容”意图经它转交右侧。
-    ///   - contentViewControllerProvider: 右侧每个 Tab 的内容页工厂，每新建一个 Tab 调用一次。
     public init(
         leftViewController: UIViewController,
         router: PPSplitContentRouter,
@@ -75,9 +71,7 @@ public final class SplitContainerViewController: UIViewController {
     ) {
         self.splitRouter = router
         self.leftNavigationController = UINavigationController(rootViewController: leftViewController)
-        self.detailHost = DetailHostViewController(
-            contentViewControllerProvider: contentViewControllerProvider
-        )
+        self.detailHost = DetailHostViewController(contentViewControllerProvider: contentViewControllerProvider)
 
         super.init(nibName: nil, bundle: nil)
 
@@ -190,23 +184,29 @@ public final class SplitContainerViewController: UIViewController {
             dot.backgroundColor = UIColor(white: 0.55, alpha: 1.0)
             dot.layer.cornerRadius = dotSize / 2
             hoverGripView.addSubview(dot)
+            // 竖向排列：每个圆点左右撑满（leading/trailing 对齐容器），
+            // 自身宽高固定为 dotSize，圆点之间靠 top 串联，形成一列。
             NSLayoutConstraint.activate([
-                dot.topAnchor.constraint(equalTo: hoverGripView.topAnchor),
-                dot.bottomAnchor.constraint(equalTo: hoverGripView.bottomAnchor),
+                dot.leadingAnchor.constraint(equalTo: hoverGripView.leadingAnchor),
+                dot.trailingAnchor.constraint(equalTo: hoverGripView.trailingAnchor),
                 dot.widthAnchor.constraint(equalToConstant: dotSize),
                 dot.heightAnchor.constraint(equalToConstant: dotSize)
             ])
             if let prev = previous {
-                dot.leadingAnchor.constraint(equalTo: prev.trailingAnchor, constant: spacing).isActive = true
+                // 第二个、第三个圆点：顶部对齐上一个圆点的底部，中间留 spacing 间距
+                dot.topAnchor.constraint(equalTo: prev.bottomAnchor, constant: spacing).isActive = true
             } else {
-                dot.leadingAnchor.constraint(equalTo: hoverGripView.leadingAnchor).isActive = true
+                // 第一个圆点：顶部对齐容器顶部
+                dot.topAnchor.constraint(equalTo: hoverGripView.topAnchor).isActive = true
             }
             previous = dot
         }
         if let last = previous {
-            last.trailingAnchor.constraint(equalTo: hoverGripView.trailingAnchor).isActive = true
+            // 最后一个圆点底部对齐容器底部，让整列圆点垂直居中在容器内
+            last.bottomAnchor.constraint(equalTo: hoverGripView.bottomAnchor).isActive = true
         }
-        hoverGripView.heightAnchor.constraint(equalToConstant: dotSize).isActive = true
+        // 容器宽度固定为圆点直径（竖向排列时横向只占一个圆点宽）
+        hoverGripView.widthAnchor.constraint(equalToConstant: dotSize).isActive = true
     }
 
     // 给分割线绑定：1) 拖动手势；2) 悬浮手势（iOS 13.4+ 指针/鼠标）。
@@ -308,17 +308,19 @@ public final class SplitContainerViewController: UIViewController {
         }
     }
 
-    // 复用的“嵌入子控制器”辅助方法（模仿 NewsSplitDemo 的 embed）。
+    // childViewController 成为当前页面的子控制器，并且它的 View 会完全填满 containerView。
     private func embed(_ childViewController: UIViewController, in containerView: UIView) {
         addChild(childViewController)
         childViewController.view.translatesAutoresizingMaskIntoConstraints = false
         containerView.addSubview(childViewController.view)
+        // 让 childViewController.view 的四条边分别贴住 containerView 的四条边
         NSLayoutConstraint.activate([
             childViewController.view.topAnchor.constraint(equalTo: containerView.topAnchor),
             childViewController.view.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             childViewController.view.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             childViewController.view.bottomAnchor.constraint(equalTo: containerView.bottomAnchor)
         ])
+        //告诉 childViewController：“你已经正式加入 self 这个父控制器了”
         childViewController.didMove(toParent: self)
     }
 }
