@@ -270,12 +270,23 @@ public final class DetailHostViewController: UIViewController,
 
         refreshUI()
 
-        // 精细化：删除被关的 cell；若选中转移到了相邻 Tab，顺便刷新它的选中样式。
-        updateTabBar(
-            reload: wasSelected ? tabBarIndexPath(ofTabID: selectedTabID).map { [$0] } ?? [] : [],
-            insert: [],
-            delete: [IndexPath(item: index, section: 0)]
-        )
+        // 精细化：先删除被关的 cell。
+        // 注意：delete 与 reload 不能落在同一批次的同一个 index path（两者都按批次前的状态解释）：
+        // 若关的是“选中且非末位”的 tab，顶上来那个的新索引恰好等于被删的旧索引，
+        // 混在同一批会撞车（NSInternalInconsistencyException）。
+        // 所以删除后集合视图已与 tabs 对齐，选中态刷新放到 completion 里按新索引做。
+        // 同 updateTabBar：先落布局，避免在旧 bounds（如高度刚变 0）下执行删除。
+        view.layoutIfNeeded()
+        collectionView.performBatchUpdates({ [weak self] in
+            guard let self = self else { return }
+            self.collectionView.deleteItems(at: [IndexPath(item: index, section: 0)])
+        }) { [weak self] _ in
+            guard let self = self else { return }
+            if wasSelected, let newIndexPath = self.tabBarIndexPath(ofTabID: self.selectedTabID) {
+                self.collectionView.reloadItems(at: [newIndexPath])
+            }
+            self.scrollToSelectedItem(animated: true)
+        }
     }
 
     // 把某个 Tab 设为预览/正式，并刷新对应 cell 的样式。
@@ -298,6 +309,10 @@ public final class DetailHostViewController: UIViewController,
     // 滚动放在 performBatchUpdates 的 completion 里：此时布局已就绪，
     // 无需再 DispatchQueue.main.async 延后滚动。
     private func updateTabBar(reload: [IndexPath], insert: [IndexPath], delete: [IndexPath]) {
+        // 关键：Tab 条可能刚从隐藏/高度 0 恢复（约束常量刚在 refreshUI 里改过，帧还没更新），
+        // 必须先落一次布局拿到真实尺寸；否则 insert/delete 会在“高度 0 的旧 bounds”下执行：
+        // flow layout 不会去问 sizeForItemAt，新 cell 宽高全是 0，且之后撑回 44 也不会自动纠正。
+        view.layoutIfNeeded()
         collectionView.performBatchUpdates({ [weak self] in
             guard let self = self else { return }
             if !reload.isEmpty { self.collectionView.reloadItems(at: reload) }
