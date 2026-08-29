@@ -150,7 +150,7 @@ struct TokenAttributes {
     }
 }
 
-private extension UIColor {
+extension UIColor {
     convenience init(_ color: MDColor) {
         self.init(red: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
     }

@@ -45,7 +45,6 @@ public final class MarkdownPreviewView: UIScrollView {
     /// results are discarded.
     public func update(source newSource: String, immediately: Bool = false) {
         source = newSource
-        needsUpdate = true
         generation += 1
         let currentGeneration = generation
         pendingTask?.cancel()

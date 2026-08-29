@@ -8,7 +8,8 @@ final class HighlightCoordinator: NSObject {
 
     var theme: MarkdownTheme = .light
     /// Called after highlighting finishes (used to refresh dependent views).
-    var didHighlight: ((String) -> Void)?
+    /// The second value holds the `- `/`1. ` marker ranges of every list item.
+    var didHighlight: ((_ text: String, _ listMarkers: [Range<Int>]) -> Void)?
 
     private var generation = 0
     private var pendingTask: Task<Void, Never>?
@@ -40,7 +41,7 @@ final class HighlightCoordinator: NSObject {
             guard MDText.normalize(textView.text ?? "") == output.text else { return }
 
             self.apply(output.ops, to: textView)
-            self.didHighlight?(output.text)
+            self.didHighlight?(output.text, Self.listMarkerRanges(in: output.ops))
         }
     }
 
@@ -50,7 +51,14 @@ final class HighlightCoordinator: NSObject {
         let output = MarkdownPipeline.styleOps(for: textView.text ?? "")
         textView.text = output.text
         apply(output.ops, to: textView)
-        didHighlight?(output.text)
+        didHighlight?(output.text, Self.listMarkerRanges(in: output.ops))
+    }
+
+    private static func listMarkerRanges(in ops: [StyleOp]) -> [Range<Int>] {
+        ops.compactMap { op in
+            if case .marker(.list) = op.token { return op.range }
+            return nil
+        }
     }
 
     // MARK: - Application

@@ -31,8 +31,11 @@ public final class MarkdownEditorView: UITextView {
     }
 
     private let coordinator = HighlightCoordinator()
+    private let bulletOverlay = ListBulletOverlay()
     /// Latest highlighted source; mirrors `text` once highlighting has caught up.
     private(set) public var highlightedSource: String = ""
+    /// Marker ranges (`- `, `1. ` …) from the latest highlight pass.
+    private var listMarkerRanges: [Range<Int>] = []
 
     public override init(frame: CGRect, textContainer: NSTextContainer?) {
         super.init(frame: frame, textContainer: textContainer)
@@ -60,8 +63,11 @@ public final class MarkdownEditorView: UITextView {
 
     private func commonInit() {
         delegate = self
-        coordinator.didHighlight = { [weak self] source in
-            self?.highlightedSource = source
+        coordinator.didHighlight = { [weak self] source, markers in
+            guard let self else { return }
+            highlightedSource = source
+            listMarkerRanges = markers
+            setNeedsLayout()
         }
         autocorrectionType = .no
         smartQuotesType = .no
@@ -70,7 +76,36 @@ public final class MarkdownEditorView: UITextView {
         // Replace tabs on input so offsets match what cmark sees.
         keyboardType = .default
         font = UIFont.systemFont(ofSize: coordinator.theme.bodySize)
-        textContainerInset = UIEdgeInsets(top: 16, left: 12, bottom: 24, right: 12)
+        // Extra left inset leaves a gutter where the list bullet overlay draws.
+        textContainerInset = UIEdgeInsets(top: 16, left: 28, bottom: 24, right: 12)
+    }
+
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        updateListBullets()
+    }
+
+    /// Position the bullet overlay; bullets hide while the text is ahead of the
+    /// last highlight pass so they never point at stale offsets.
+    private func updateListBullets() {
+        let source = text ?? ""
+        let settled = source == coordinator.lastAppliedText && markedTextRange == nil
+        let markers = settled ? unorderedListMarkers(source) : []
+        bulletOverlay.update(textView: self,
+                             markerRanges: markers,
+                             color: UIColor(coordinator.theme.linkColor))
+    }
+
+    /// Unordered list markers only: `- `, `* `, `+ `. Ordered items (`1. `) are skipped.
+    private func unorderedListMarkers(_ source: String) -> [Range<Int>] {
+        let utf16 = Array(source.utf16)
+        return listMarkerRanges.filter { range in
+            guard range.lowerBound < utf16.count else { return false }
+            switch utf16[range.lowerBound] {
+            case 0x2D, 0x2A, 0x2B: return true // "-", "*", "+"
+            default: return false
+            }
+        }
     }
 
     /// Apply the theme and re-highlight immediately.
