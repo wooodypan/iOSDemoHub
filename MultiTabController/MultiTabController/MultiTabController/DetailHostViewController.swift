@@ -488,7 +488,7 @@ private final class DetailTabCell: UICollectionViewCell {
     private func setupViews() {
         contentView.layer.cornerRadius = 8
         contentView.layer.borderWidth = 1
-        contentView.layer.borderColor = UIColor(white: 0.80, alpha: 1.0).cgColor
+        contentView.layer.borderColor = UIColor(white: 0.80, alpha: 0.5).cgColor
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
@@ -497,7 +497,7 @@ private final class DetailTabCell: UICollectionViewCell {
 
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.setTitle("x", for: .normal)
-        closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 14, weight: .bold)
+        closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
         contentView.addSubview(titleLabel)

@@ -92,11 +92,22 @@ class NewWindowViewController: UIViewController {
     }
 
     private func setupCloseButton() {
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .close,
-            target: self,
-            action: #selector(closeTapped)
-        )
+        // iOS 13+ 用 .close（显示小 X 图标）；iOS 12 没有 .close，回退到 .done（显示"完成"）。
+        let closeButtonItem: UIBarButtonItem
+        if #available(iOS 13.0, *) {
+            closeButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .close,
+                target: self,
+                action: #selector(closeTapped)
+            )
+        } else {
+            closeButtonItem = UIBarButtonItem(
+                barButtonSystemItem: .done,
+                target: self,
+                action: #selector(closeTapped)
+            )
+        }
+        navigationItem.leftBarButtonItem = closeButtonItem
         // 标记为新窗口
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: "🪟 新窗口",
