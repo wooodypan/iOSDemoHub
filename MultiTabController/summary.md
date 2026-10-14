@@ -3,6 +3,18 @@ MultiTabController 从 0 构建全记录
 > 一份"施工日志 + 教程"，讲清楚这个支持 **iPhone 单 TabBar、iPad/Mac 左右分栏 + 右侧浏览器式多 Tab 详情宿主** 的 iOS App 是怎么一步步搭起来的。
 > 目标读者：会一点 Swift/UIKit、想搞懂"不用 Storyboard、不用 SceneDelegate、纯代码做多 Tab 容器"的同学。
 
+> **📌 更新（2026-09-29）：本文下面「不使用 SceneDelegate」的说法是当初的原始约束，现在已作废。**
+> Apple 技术说明 [TN3187](https://developer.apple.com/documentation/Technotes/tn3187-Migrating-to-the-UIKit-scene-based-life-cycle)
+> 规定用 iOS 27 SDK 构建的 App **必须**采用 UIScene 生命周期，否则一启动就断言失败。
+> 本次改动：
+> - 宿主新增 `MultiTabController/SceneDelegate.swift` + `Info.plist` 里的 `UIApplicationSceneManifest`，改为 Scene 生命周期；
+> - 库内新增 `AppLifecycle.swift`（运行时判定 + 统一取窗口），
+>   `RootBuilder.makeWindow(windowScene:…)` 成为两条生命周期共用的建窗口入口，
+>   `WindowManager` 不再按平台分叉取窗口；
+> - `AppDelegate` 保留「没采用 Scene 时自己建窗口」的兜底分支，
+>   所以**同一个 App 两种生命周期都能跑**（把 Info.plist 里的场景清单删掉即可切回传统模式）。
+> 详见 `README.md` 的「生命周期兼容」章节。
+
 ---
 
 ## 目录

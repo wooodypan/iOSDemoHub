@@ -16,7 +16,7 @@ Mac Catalyst：
 - DeviceHelper / WindowManager：设备判断与多窗口（新窗口）能力。
 
 注意：底层的 PPTabBarController 为内部实现类型（internal），未对外公开，请通过 RootBuilder / TabBarBuilder 等入口使用。
-本 pod 仅打包库源码（MultiTabController/MultiTabController/MultiTabController/ 下的 swift 文件）；
+本 pod 仅打包库源码（MultiTabController/MultiTabController/ 下的 swift 文件）；
 示例 / Demo 文件（AppDelegate.swift、ArticleListViewController.swift、DataStore.swift）位于宿主层，不随 pod 发布。
 DESC
 
@@ -29,10 +29,10 @@ DESC
   s.platforms        = { :ios => '12.0' }
   s.swift_versions  = ['5.0']
 
-  # 只打包库源码（MultiTabController/MultiTabController/MultiTabController/ 下的 swift 文件），
+  # 只打包库源码（MultiTabController/MultiTabController/ 下的 swift 文件），
   # 明确排除宿主层（AppDelegate.swift / ArticleListViewController.swift / DataStore.swift /
   # Info.plist / LaunchScreen / Assets.xcassets）与参考项目 NewsSplitDemo。
-  s.source_files = 'MultiTabController/MultiTabController/MultiTabController/**/*.swift'
+  s.source_files = 'MultiTabController/MultiTabController/**/*.swift'
 
   # UIKit 为主；Mac Catalyst 下用到的 AppKit 由系统自动链接，无需在此声明
   s.frameworks   = 'UIKit'

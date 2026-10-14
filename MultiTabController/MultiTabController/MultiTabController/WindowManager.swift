@@ -4,23 +4,30 @@ import UIKit
 // 负责管理新窗口的打开（Mac Catalyst / iPadOS 13+）
 // 新窗口打开后，关闭即销毁（不保活）
 //
+// 关于生命周期兼容（本库两种都支持）：
+//   - UIScene 生命周期（iOS 27 SDK 起 Apple 强制要求，见 TN3187）：窗口归 UIWindowScene 管；
+//   - 传统 AppDelegate 生命周期：窗口归 AppDelegate.window 管。
+//   取窗口这件事统一交给 AppLifecycle.activeWindow，所以下面的代码不用区分是哪一种。
+//
+// 关于“真·多窗口”：
+//   只有 App 采用了 Scene 生命周期、且 Info.plist 里 UIApplicationSupportsMultipleScenes = YES 时，
+//   系统才允许开第二个窗口（用 AppLifecycle.supportsMultipleScenes 判断）。
+//   本类刻意不碰场景 API，而是统一降级成「模态弹出」：这样两种生命周期下观感一致，
+//   也不会替宿主擅自决定“新场景里应该显示什么”。
+//   要做真多窗口，宿主自己实现 PPContentRouting，在 .newWindow 分支里调用
+//   UIApplication.requestSceneSessionActivation(_:userActivity:options:errorHandler:)——
+//   库已经把“路由”做成了协议，这是最合适的扩展点。
+//
 // 对外公开 openNewWindow：外部如果自己实现路由（PPContentRouting），
 // 也可以在“新窗口”模式下直接调用这个能力。
 
 public struct WindowManager {
 
-    // 存储新窗口对应的内容项（通过 userInfo 传递）
-    // 注意：多窗口在 UISceneDelegate 中更优雅，但本工程禁用 SceneDelegate
-    // 在 iOS 13 以下或 Catalyst 下，回退到模态弹出
-
+    /// 打开一个新的“窗口”（当前实现是模态弹出的降级方案）。
+    /// 行为在 UIScene 生命周期与传统 AppDelegate 生命周期下完全一致。
     public static func openNewWindow(item: PPContentItem) {
-        if #available(iOS 13.0, *) {
-            // 优先尝试 UIScene 多窗口（需在 Info.plist 配置 UIApplicationSupportsMultipleScenes）
-            // 由于本工程不使用 SceneDelegate，降级为模态弹出
-            openAsModal(item: item)
-        } else {
-            openAsModal(item: item)
-        }
+        // 统一走模态：不依赖 scene / 不依赖 AppDelegate 的窗口属性，两条生命周期都能用。
+        openAsModal(item: item)
     }
 
     private static func openAsModal(item: PPContentItem) {
@@ -48,21 +55,12 @@ public struct WindowManager {
         return base
     }
 
-    // 获取当前 keyWindow。
-    // 传统（非 Scene）生命周期里用 UIApplication.shared.keyWindow；
-    // Mac Catalyst 里 keyWindow 不可用，要从 connectedScenes 取窗口，所以按平台区分。
-    #if targetEnvironment(macCatalyst)
+    // 获取当前 keyWindow：统一交给 AppLifecycle.activeWindow。
+    // 内部已经按「Scene 生命周期优先、传统生命周期兜底」的顺序找过，
+    // 所以这里不用再按平台（Catalyst / iOS）或生命周期分叉。
     private static func keyWindow() -> UIWindow? {
-        return UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows
-            .first { $0.isKeyWindow }
+        return AppLifecycle.activeWindow
     }
-    #else
-    private static func keyWindow() -> UIWindow? {
-        return UIApplication.shared.keyWindow
-    }
-    #endif
 }
 
 // MARK: - NewWindowViewController

@@ -2,5 +2,39 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- UIScene 场景清单（Apple TN3187：用 iOS 27 SDK 构建的 App 必须采用 UIScene 生命周期，
+	     否则一启动就断言失败 "UIScene life cycle is required for apps built with this SDK."）。
+
+	     这里走的是「在 Info.plist 里配场景」这条路线；删掉整个 UIApplicationSceneManifest 键，
+	     App 就退回传统 AppDelegate 生命周期（AppDelegate 里已经留好了那条兜底分支）。
+
+	     另外注意：Build Settings 里的 INFOPLIST_KEY_UIApplicationSceneManifest_Generation
+	     必须保持 NO（工程里已显式设为 NO）。它若为 YES，Xcode 会生成一份
+	     UISceneConfigurations 为空的清单把这里手写的配置覆盖掉，
+	     表现是启动后黑屏 / 依旧判定为“没采用场景”，非常难查。 -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<!-- 单窗口即可：TN3187 只要求“采用”场景生命周期，不要求支持多窗口。
+		     想要真多窗口（Mac Catalyst 开第二个窗口）再改成 true，
+		     并让宿主自己实现 PPContentRouting 去调用 requestSceneSessionActivation。 -->
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<!-- Swift 类在运行时的真实名字带模块前缀（MultiTabController.SceneDelegate），
+					     UIKit 是用 NSClassFromString 去找它的，所以这里必须写
+					     $(PRODUCT_MODULE_NAME).SceneDelegate；只写裸类名 SceneDelegate 会找不到类，
+					     等于“没配”，启动照样断言崩。 -->
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 </dict>
 </plist>

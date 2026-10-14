@@ -1,83 +1,47 @@
-//
-//  AppDelegate.swift
-//  MultiTabController
-//
-//  Created by pan on 2026/8/20.
-//
-
 import UIKit
 
 // @main 标记应用入口。
-// 本工程刻意不使用 UISceneDelegate（无 Scene 生命周期），
-// 因此在 AppDelegate 里手动创建 UIWindow，并把根控制器设为窗口根。
 //
-// 说明：ArticleListViewController / DetailViewController / DataStore 都是"示例 / Demo"代码，
-// 已从库源码中拆出，放在与 AppDelegate 平级的宿主层；库本体不依赖它们。
+// 本工程**同时兼容两套生命周期**，由 Info.plist 决定当前走哪一套：
+//
+//   1) UIScene 生命周期（当前启用；iOS 27 SDK 起 Apple 强制要求，见 TN3187）
+//      Info.plist 里配了 UIApplicationSceneManifest → 窗口由 SceneDelegate 创建，
+//      本类的 didFinishLaunchingWithOptions 只管进程级的事。
+//   2) 传统 AppDelegate 生命周期
+//      把 Info.plist 里的 UIApplicationSceneManifest 整块删掉，UIKit 就退回老模式，
+//      窗口必须由本类创建 —— 就是下面那段被 if 挡住的代码。
+//
+// 两套路线共用 DemoRootFactory 里的根构建代码，所以业务 UI 一行都不用改。
+// 运行期想知道当前是哪一套，读库里的 `AppLifecycle.usesSceneLifecycle` 即可。
+//
+// 说明：DemoRootFactory / ArticleListViewController / DetailViewController / DataStore
+// 都是“示例 / Demo”代码，位于与 AppDelegate 平级的宿主层；库本体不依赖它们。
 // 其中 DetailViewController 是 PPContentDisplaying 的参考实现——库只认这个协议，
-// 不含任何内容 UI，Tab 里显示什么由下面的 contentViewControllerProvider 决定。
+// 不含任何内容 UI，Tab 里显示什么由 DemoRootFactory 决定。
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
-    // 必须持有 window：系统在启动完成后会通过 KVC 把窗口赋值到这里
+    // 窗口只在「传统生命周期」下归本类所有（Scene 生命周期下窗口属于 SceneDelegate）。
+    // 系统启动完成后也会通过 KVC 把窗口赋值到这里，所以这个属性必须保留。
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
 
-        // 1. 创建窗口（传统生命周期，由我们自行管理）
-        window = UIWindow(frame: UIScreen.main.bounds)
+        // 进程级的逻辑放这里（启动上报、解压、注册推送、检查更新…），
+        // 它在两种生命周期下都会被调用，不受 Scene 迁移影响。
+        //
+        // 注意：这里不要碰 self.window —— Scene 生命周期下此刻场景还没建立，窗口必然是 nil。
 
-        // 2. iPhone 根：两个列表包进标签栏，点内容 push 详情。
-        let iPhoneRoot: () -> UIViewController = {
-            let techList = ArticleListViewController(articles: DataStore.techArticles, title: "Tech")
-            let newsList = ArticleListViewController(articles: DataStore.newsArticles, title: "News")
-            let techNav = UINavigationController(rootViewController: techList)
-            let newsNav = UINavigationController(rootViewController: newsList)
-
-            // 内容页工厂：库不含内容 UI，这里注入宿主自己的 DetailViewController。
-            techList.router = PPPhoneContentRouter(
-                sourceViewController: techList,
-                contentViewControllerProvider: { DetailViewController() }
+        // 传统生命周期兜底：只有 App 没采用 UIScene 时才需要本类建窗口。
+        // 判据直接用库里的 AppLifecycle（口径与 TN3187 一致：配了场景清单就是 Scene 模式）。
+        if !AppLifecycle.usesSceneLifecycle {
+            let window = RootBuilder.makeWindow(
+                iPhoneRoot: { DemoRootFactory.makeiPhoneRoot() },
+                iPadOrMacRoot: { DemoRootFactory.makeiPadOrMacRoot() }
             )
-            newsList.router = PPPhoneContentRouter(
-                sourceViewController: newsList,
-                contentViewControllerProvider: { DetailViewController() }
-            )
-
-            return TabBarBuilder.build(viewControllers: [techNav, newsNav], titles: ["Tech", "News"])
+            self.window = window
+            window.makeKeyAndVisible()
         }
-
-        // 3. iPad / Mac 根：左侧列表 + 右侧多 Tab 详情宿主。
-        let iPadOrMacRoot: () -> UIViewController = {
-            let router = PPSplitContentRouter()
-            let categories: [(title: String, image: UIImage?, items: [PPContentItem])] = [
-                ("Tech", UIImage(systemName: "cpu"), DataStore.techArticles),
-                ("News", UIImage(systemName: "newspaper"), DataStore.newsArticles)
-            ]
-            let lists = categories.map { title, _, items -> UIViewController in
-                let list = ArticleListViewController(articles: items, title: title)
-                list.router = router
-                return list
-            }
-            // 用 PPTabItem 传入图标，演示 TabBarBuilder 新开放的图标能力。
-            let sidebar = TabBarBuilder.build(
-                viewControllers: lists,
-                items: categories.map { PPTabItem(title: $0.title, image: $0.image) }
-            )
-            return SplitContainerViewController(
-                leftViewController: sidebar,
-                router: router,
-                contentViewControllerProvider: { DetailViewController() }
-            )
-        }
-
-        // 4. 由 RootBuilder 根据设备分发到上面两套根之一。
-        window?.rootViewController = RootBuilder.makeRoot(
-            iPhoneRoot: iPhoneRoot,
-            iPadOrMacRoot: iPadOrMacRoot
-        )
-
-        // 5. 让窗口成为主窗口并显示出来
-        window?.makeKeyAndVisible()
 
         return true
     }

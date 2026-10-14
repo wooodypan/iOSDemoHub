@@ -45,6 +45,27 @@ public final class DetailHostViewController: UIViewController,
     /// 点击侧栏按钮时的回调：由父容器（SplitContainerViewController）执行左栏的展开/折叠。
     public var onToggleSidebarRequest: (() -> Void)?
 
+    /// 是否按内容 ID（`PPContentItem.id`）去重。默认 **true**。
+    ///
+    /// - `true`：打开一个**已经打开过**的内容时，不再新建 Tab，而是直接定位（切换）到那个 Tab。
+    ///   例如先后双击打开 Article 1、Article 2，再单击 Article 1 ——
+    ///   会直接切回 Article 1 那个 Tab，而不是开出第三个标签。
+    /// - `false`：保留原来的 VS Code 语义（预览槽位复用 / 双击永远新建），
+    ///   同一个内容允许被开成多个 Tab。
+    ///
+    /// 去重只按 `PPContentItem.id` 比较，所以请保证你的业务 id 在同一个宿主里唯一。
+    public var deduplicateOpenedItems: Bool = true
+
+    // Mac Catalyst 专用：⌘W 在 Catalyst 下走 AppKit 的按键等价派发（NSWindow 的 performClose:），
+    // UIKeyCommand 抢不过它，所以要额外装一个底层键盘监听兜底（见 CatalystKeyInterceptor）。
+    // 必须强持有：这个实例被释放时监听会自动移除。
+    #if targetEnvironment(macCatalyst)
+    private var catalystKeyInterceptor: CatalystKeyInterceptor?
+    #endif
+
+
+    
+
     private lazy var collectionViewLayout: UICollectionViewFlowLayout = {
         let layout = UICollectionViewFlowLayout()
         layout.scrollDirection = .horizontal
@@ -91,9 +112,139 @@ public final class DetailHostViewController: UIViewController,
         view.backgroundColor = .white
         setupViews()
         refreshUI()
+        // Mac Catalyst 下装底层键盘监听，用来真正拦下 ⌘W（详见方法内注释）。
+        installCatalystKeyInterceptorIfNeeded()
         // 首次进入做一次全量同步（此时必无 Tab，代价为零）；
         // 之后的增删改都走精细化的 insert/delete/reload item。
         collectionView.reloadData()
+    }
+
+    // MARK: - 键盘快捷键（Command + W 关闭当前 Tab）
+    /// 是否在关闭最后一个 Tab 后弹出“是否退出 App”确认框。默认 false。
+    /// 集成方可以用这个开关关闭退出确认弹框（例如不希望用户直接退出应用）。
+    public var showExitPromptWhenAllTabsClosed: Bool = false
+
+    /// 自定义的“退出 App”动作。默认 nil 时走平台默认实现：
+    ///   - Mac Catalyst：调用系统退出（NSApplication.terminate，等价于 Cmd+Q）
+    ///   - 其它平台（iOS/iPadOS）：iOS 没有官方“退出 App”API（App Store 审核也会拒绝 exit()），
+    ///     演示场景用 exit(0) 兜底；生产环境请注入自己的实现（例如“回到首页”）。
+    public var exitAction: (() -> Void)?
+
+    // UIViewController 默认不能成为 first responder；硬件键盘的 keyCommands
+    // 需要响应链上有人返回快捷键列表，所以这里允许成为 first responder。
+    public override var canBecomeFirstResponder: Bool { true }
+
+    // 视图出现后申请成为 first responder，保证硬件键盘按键能送达本控制器。
+    // （iPad 配键盘、Mac Catalyst 都走这套机制。）
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        becomeFirstResponder()
+    }
+
+    // 向系统声明本控制器支持的键盘快捷键列表。
+    // 硬件键盘按键时，系统会沿响应链询问各对象的 keyCommands 并做匹配。
+    public override var keyCommands: [UIKeyCommand]? {
+        // Command + W：关闭当前选中的 Tab（模仿桌面浏览器的“关闭标签页”快捷键）。
+        // 注意：用 input 版本的老初始化器（iOS 7+），
+        // 带 title 的版本在 iOS 12 deployment target 下会解析到 iOS 13+ 的重载，编译报错。
+        let closeTabCommand = UIKeyCommand(
+            input: "w",
+            modifierFlags: .command,
+            action: #selector(handleCloseCurrentTab(_:))
+        )
+        // title：Mac Catalyst 菜单栏 / iPad 长按 Command 的快捷键面板里显示的名字。
+        // 注意：UIKeyCommand.title 属性在 Xcode 26 SDK 里标注为 iOS 13+（iOS 12 没有 Catalyst，
+        // 无实际影响），所以用 #available 保护以兼容 iOS 12 deployment target。
+        if #available(iOS 13.0, *) {
+            closeTabCommand.title = "关闭当前标签页Z"
+        }
+        // discoverabilityTitle：快捷键面板里的说明文字（iOS 7+，无版本问题）。
+        closeTabCommand.discoverabilityTitle = "关闭当前标签页Z"
+        return [closeTabCommand]
+    }
+
+    // Command + W 的响应（UIKeyCommand 路径：iPad 外接键盘等场景）：关闭当前选中的 Tab。
+    @objc private func handleCloseCurrentTab(_ sender: UIKeyCommand) {
+        closeCurrentTab()
+    }
+
+    // 统一的“关闭当前选中 Tab”入口：快捷键、Catalyst 底层监听最终都走这里。
+    private func closeCurrentTab() {
+        // 没有选中任何 Tab（例如所有 Tab 已关闭、处于空状态）就什么都不做。
+        guard let selectedID = selectedTabID else { return }
+        closeTab(withID: selectedID)
+    }
+
+    // MARK: - Mac Catalyst 兜底：在 AppKit 处理 ⌘W 之前把它拦下来
+
+    // ⌘W 在 Catalyst 下是系统菜单 “Close Window” 的按键等价（key equivalent），
+    // 由 AppKit 在 NSWindow 上执行 performClose:，优先级高于 UIKeyCommand。
+    // 所以光靠上面的 keyCommands / buildMenu / canPerformAction 拦不住，
+    // 这里装一个 NSEvent 本地事件监听——它运行在“按键等价处理之前”，
+    // 这是苹果在 WWDC《Key Event Handling in Cocoa Applications》里给出的标准做法。
+    private func installCatalystKeyInterceptorIfNeeded() {
+        #if targetEnvironment(macCatalyst)
+        catalystKeyInterceptor = CatalystKeyInterceptor { [weak self] event in
+            guard let self = self else { return false }
+            return self.handleCatalystKeyEvent(event)
+        }
+        #endif
+    }
+
+    // 处理 Catalyst 下拦截到的按键事件。
+    // 返回 true = 这个按键已被处理，事件要被吞掉（AppKit 不会再执行 ⌘W 关闭窗口）；
+    // 返回 false = 不处理，放行给系统走默认行为。
+    #if targetEnvironment(macCatalyst)
+    private func handleCatalystKeyEvent(_ event: AnyObject) -> Bool {
+        // 只关心 Command + W。
+        guard CatalystKeyInterceptor.isCommandPressed(with: "w", in: event) else { return false }
+
+        // 正在显示“是否退出 App”确认框时，⌘W 什么也不做，避免绕过确认直接退出。
+        if topMostPresentedViewController() is UIAlertController { return true }
+
+        // 多窗口场景：只有自己的窗口是当前活动窗口时才响应，
+        // 否则第二个窗口里的宿主也会跟着关 Tab。
+        guard view.window?.isKeyWindow == true else { return false }
+
+        // 一个 Tab 都没有：放行，让系统按默认行为处理（关窗口 / 退出 App）。
+        guard selectedTabID != nil else { return false }
+
+        // 关掉当前选中的 Tab（与点关闭按钮、iPad 快捷键走完全相同的逻辑）。
+        closeCurrentTab()
+        // 吞掉事件：不让 AppKit 再执行 ⌘W 的“关闭窗口”。
+        return true
+    }
+    #endif
+
+    // 补充说明：下面两个方法是 UIKit 层的“双保险”，在 iPadOS 菜单 / 部分场景下仍有用，
+    // 但 Catalyst 下真正起作用的是上面的本地事件监听。
+
+    // 关键点 1：Mac Catalyst / iPadOS 下，⌘W 默认被系统菜单里的 "Close Window"（performClose:）
+    // 抢占——它是系统级菜单命令，走菜单命令派发，优先级高于普通 UIKeyCommand，
+    // 所以必须先在这里把系统菜单项移除，⌘W 才会落到我们的 keyCommands。
+    // 本方法在响应链上的对象构建系统主菜单时被调用（当前宿主是右侧活跃 VC，会在链上）。
+    // 注意：若你的 App 有多个窗口 / 用了 SceneDelegate，建议在 AppDelegate 或 SceneDelegate
+    // 里也重写一次（主菜单是全局单例），内容同样是 builder.remove(menu: .close)。
+    @available(iOS 13.0, *)
+    public override func buildMenu(with builder: UIMenuBuilder) {
+        super.buildMenu(with: builder)
+        // 只处理主菜单（Catalyst 的文件菜单 / iPadOS 的菜单），不碰右键等上下文菜单。
+        guard builder.system == .main else { return }
+        // 移除系统默认的 "Close Window" 命令（快捷键 ⌘W），让位给我们的自定义处理。
+        builder.remove(menu: .close)
+    }
+
+    // 关键点 2：双保险——即使菜单项已被移除，系统仍可能通过响应链兜底执行
+    // performClose:（例如用户重新绑定快捷键或系统菜单重建）。
+    // 这里显式对 performClose: 返回 false，彻底阻止"关闭窗口"行为抢占 ⌘W。
+    // 只对 Mac Catalyst 生效；iOS/iPadOS 响应链上没有这个 AppKit selector，保持默认即可。
+    public override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        #if targetEnvironment(macCatalyst)
+        if action == Selector(("performClose:")) {
+            return false
+        }
+        #endif
+        return super.canPerformAction(action, withSender: sender)
     }
 
     // MARK: - 侧栏按钮状态（由父容器在展开/折叠后调用，保持图标与状态一致）
@@ -122,8 +273,14 @@ public final class DetailHostViewController: UIViewController,
 
     // MARK: - 对外的“打开文章”入口（由 router 调用）
 
-    /// 预览（单击）：复用已有的预览 Tab；没有则新建一个预览 Tab。
+    /// 预览（单击）：优先复用已有的预览 Tab；没有则新建一个预览 Tab。
+    /// 开启 `deduplicateOpenedItems` 后，若这个内容已经打开过，会直接切到那个 Tab 而不新建。
     public func openPreview(_ item: PPContentItem) {
+        // 去重：这个内容已经在某个 Tab 里了 -> 直接定位过去，不新建。
+        if deduplicateOpenedItems, let index = existingTabIndex(forItemID: item.id) {
+            selectTab(at: index)
+            return
+        }
         if let index = tabs.firstIndex(where: { $0.isPreview }) {
             // 复用预览槽位：把内容加载进去并切过去。
             let previousID = selectedTabID
@@ -143,8 +300,14 @@ public final class DetailHostViewController: UIViewController,
         }
     }
 
-    /// 正式 Tab（双击 / 在详情里点“新Tab打开”）：永远新建，不复用。
+    /// 正式 Tab（双击 / 在详情里点“新Tab打开”）：默认永远新建，不复用。
+    /// 开启 `deduplicateOpenedItems` 后，若这个内容已经打开过，会直接切到那个 Tab 而不新建。
     public func openNewTab(_ item: PPContentItem? = nil) {
+        // 去重：传了内容且它已经打开过 -> 直接定位过去，不新建。
+        if let item = item, deduplicateOpenedItems, let index = existingTabIndex(forItemID: item.id) {
+            selectTab(at: index)
+            return
+        }
         appendTab(for: item, isPreview: false)
     }
 
@@ -214,6 +377,36 @@ public final class DetailHostViewController: UIViewController,
 
     // MARK: - 私有：Tab 管理
 
+    // 按内容 ID 找到“已经打开的”那个 Tab 的位置；没找到返回 nil。
+    // 只比较 PPContentItem.id —— 没有内容的空 Tab（item 为 nil）不参与去重。
+    private func existingTabIndex(forItemID itemID: String) -> Int? {
+        return tabs.firstIndex(where: { $0.item?.id == itemID })
+    }
+
+    // 把某个位置的 Tab 设为选中：挂上它的内容视图，并只刷新受影响的两个 cell。
+    // 去重命中时用它“定位”到已存在的 Tab，而不是新建。
+    private func selectTab(at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        let previousID = selectedTabID
+        let newID = tabs[index].id
+
+        // 已经是当前选中的 Tab：只把它滚动到可见区域即可，不用刷新。
+        guard newID != previousID else {
+            scrollToSelectedItem(animated: true)
+            return
+        }
+
+        selectedTabID = newID
+        refreshUI()
+
+        // 切 tab 只改变选中态：精细化只 reload 新旧两个 cell，不全量 reloadData。
+        var indexPaths = [IndexPath(item: index, section: 0)]
+        if let previousIndex = tabBarIndexPath(ofTabID: previousID), previousIndex.item != index {
+            indexPaths.append(previousIndex)
+        }
+        updateTabBar(reload: indexPaths, insert: [], delete: [])
+    }
+
     private func load(item: PPContentItem, into index: Int) {
         tabs[index].item = item
         // 载入新内容：协议约定 configure 内部会把编辑状态复位为未编辑，
@@ -270,6 +463,12 @@ public final class DetailHostViewController: UIViewController,
 
         refreshUI()
 
+        // 新增：所有 Tab 都已关闭，且外部开启了退出确认 -> 弹出“是否退出 App”确认框。
+        // 无论关闭途径（Command+W 快捷键、点 Tab 上的关闭按钮）都统一生效。
+        if tabs.isEmpty && showExitPromptWhenAllTabsClosed {
+            presentExitConfirmationIfNeeded()
+        }
+
         // 精细化：先删除被关的 cell。
         // 注意：delete 与 reload 不能落在同一批次的同一个 index path（两者都按批次前的状态解释）：
         // 若关的是“选中且非末位”的 tab，顶上来那个的新索引恰好等于被删的旧索引，
@@ -287,6 +486,49 @@ public final class DetailHostViewController: UIViewController,
             }
             self.scrollToSelectedItem(animated: true)
         }
+    }
+
+    // MARK: - 私有：退出确认弹框
+
+    // 弹出“是否退出 App”确认框：确定则退出，取消则停留在当前（空 Tab）状态。
+    private func presentExitConfirmationIfNeeded() {
+        let alert = UIAlertController(
+            title: "是否退出 App？",
+            message: "所有标签页都已关闭，是否退出应用？",
+            preferredStyle: .alert
+        )
+        // 取消：什么都不做，留在当前页面（用户还能从左侧重新打开内容）。
+        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+        // 退出：执行退出动作。
+        alert.addAction(UIAlertAction(title: "退出", style: .destructive) { [weak self] _ in
+            self?.performExit()
+        })
+        // 用“最顶层可 present 的控制器”来弹，避免当前已有模态（如新窗口）时 present 失败。
+        topMostPresentedViewController().present(alert, animated: true)
+    }
+
+    // 找到当前能 present 弹框的最顶层控制器（沿 presentedViewController 链向下钻）。
+    private func topMostPresentedViewController() -> UIViewController {
+        var top: UIViewController = self
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        return top
+    }
+
+    // 执行退出。优先使用外部注入的 exitAction；没有注入时走平台默认实现。
+    private func performExit() {
+        if let exitAction = exitAction {
+            // 集成方自定义的退出行为（例如“回到首页”），用它即可。
+            exitAction()
+            return
+        }
+        
+        // iOS/iPadOS：没有官方“退出 App”的 API，演示项目用 exit(0) 兜底。
+        // 注意：生产环境的 App Store 应用不应调用 exit()，请改用 exitAction
+        // 注入“回到首页 / 关闭窗口”之类的自定义行为。
+//        exit(0)
+
     }
 
     // 把某个 Tab 设为预览/正式，并刷新对应 cell 的样式。
@@ -487,8 +729,8 @@ private final class DetailTabCell: UICollectionViewCell {
 
     private func setupViews() {
         contentView.layer.cornerRadius = 8
-        contentView.layer.borderWidth = 1
-        contentView.layer.borderColor = UIColor(white: 0.80, alpha: 0.5).cgColor
+//        contentView.layer.borderWidth = 1
+//        contentView.layer.borderColor = UIColor(white: 0.80, alpha: 0.5).cgColor
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
@@ -497,6 +739,7 @@ private final class DetailTabCell: UICollectionViewCell {
 
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.setTitle("x", for: .normal)
+        closeButton.setTitleColor(UIColor(red: 0.23, green: 0.23, blue: 0.23, alpha: 1.00), for: .normal)
         closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
@@ -517,7 +760,7 @@ private final class DetailTabCell: UICollectionViewCell {
 
     func configure(title: String, selected: Bool, isPreview: Bool) {
         titleLabel.text = title
-        contentView.backgroundColor = selected ? UIColor(white: 0.89, alpha: 1.0) : UIColor(white: 0.96, alpha: 1.0)
+        contentView.backgroundColor = selected ? UIColor(red: 0.90, green: 0.90, blue: 0.94, alpha: 1.00) : UIColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.00)
         // 预览 Tab 用斜体，强调“可复用”；正式 Tab 用正常字体（半粗）。
         titleLabel.font = isPreview
             ? UIFont.italicSystemFont(ofSize: 14)
