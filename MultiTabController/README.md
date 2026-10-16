@@ -15,6 +15,7 @@
 - **DetailViewController**：右侧详情页，含「标记为已编辑 / 清除编辑标记」示例，用于固定当前 Tab
 - **DetailHostViewController**：右侧多 Tab 宿主，承载 VS Code 预览/正式语义
 - **按内容 ID 去重**：`DetailHostViewController.deduplicateOpenedItems`（默认 `true`）。打开一个**已经打开过**的内容时不再新建 Tab，而是直接定位到那个 Tab；置 `false` 则恢复原语义（同一个内容可以开成多个 Tab）。比较依据是 `PPContentItem.id`，所以请保证业务 id 在同一个宿主里唯一；没有内容的空 Tab 不参与去重
+- **Tab 条外观可定制**：Tab 单元格只圆**上面两个角**、底边与 Tab 条底边对齐、顶部留 5pt 间距（像浏览器标签页一样「从底边长出来」）；选中 / 未选中底色由 `DetailHostViewController.tabSelectedBackgroundColor` / `.tabUnselectedBackgroundColor` 两个公开变量控制，赋值即生效；Mac Catalyst 下关闭按钮（x）默认隐藏、鼠标悬浮到 Tab 上才出现，同时该 Tab 底色点亮成选中色。详见下文「[定制 Tab 条外观](#定制-tab-条外观)」
 - **键盘快捷键**：iPad / Mac Catalyst 下按 `Command+W` 关闭当前选中的 Tab；所有 Tab 都关闭后可按配置弹出「是否退出 App」确认框，弹框开关为 `DetailHostViewController.showExitPromptWhenAllTabsClosed`（默认开启），退出动作可用 `exitAction` 自定义
   - **Mac Catalyst 下真正生效的是底层事件监听**：⌘W 是系统菜单 “Close Window” 的*按键等价（key equivalent）*，由 AppKit 在 `NSWindow` 上执行 `performClose:`，优先级高于 `UIKeyCommand`，所以只加 `keyCommands` / 只删菜单项都拦不住。库内新增 `CatalystKeyInterceptor`，用 `NSEvent` 本地事件监听在按键等价处理之前把 ⌘W 截下
   - iPad 仍走 `UIKeyCommand`；`buildMenu` 移除 `.close` 菜单项 + `canPerformAction` 拦截 `performClose:` 作为 UIKit 层的补充
@@ -116,6 +117,48 @@ import MultiTabController
 let router = PPPhoneContentRouter(sourceViewController: techList)
 techList.router = router
 ```
+
+## 定制 Tab 条外观
+
+右侧多 Tab 宿主的 Tab 条默认长这样：
+
+- 单个 Tab 只圆**上面两个角**（半径 8pt），下面两个角保持直角，底边与 Tab 条的底边对齐 —— 看起来像浏览器标签页那样「从底边长出来」，而不是浮在半空；
+- Tab 顶部与 Tab 条顶边留 **5pt** 间距（单元格高度 = Tab 条高度 44pt − 5pt）；
+- 选中 Tab 底色默认浅灰，未选中默认透明（露出 Tab 条自身的底色 `UIColor(white: 0.92, alpha: 1)`）；
+- **Mac Catalyst 下关闭按钮（x）是悬浮显示的**：默认藏起来，鼠标悬浮到该 Tab 上才出现（对齐网页里的 CSS hover）；**悬浮的判定粒度是整个 Tab**（指针落在标题上也算），此时整个 Tab 的底色（`contentView.backgroundColor`）会变成 `tabSelectedBackgroundColor`，指针移出即恢复。触摸平台（iPhone / iPad）没有悬浮这个概念，x 一直显示、底色不随指针变。
+
+**选中 / 未选中底色已开放给外部**，赋值后已经在屏幕上的 Tab 会立刻改色（库里只重刷已有单元格，不会重建整条 Tab 条）：
+
+| 属性 | 默认值 | 说明 |
+|---|---|---|
+| `DetailHostViewController.tabSelectedBackgroundColor` | `UIColor(red: 0.97, green: 0.97, blue: 0.97, alpha: 1)` | 选中 Tab 的底色，作用在单元格的 `contentView.backgroundColor` 上 |
+| `DetailHostViewController.tabUnselectedBackgroundColor` | `.clear` | 未选中 Tab 的底色 |
+
+```swift
+import MultiTabController
+
+// iPad / Mac：宿主由分栏容器内部创建，容器已把 detailHost 公开出来，直接拿它改色
+let split = SplitContainerViewController(
+    leftViewController: sidebar,
+    router: router,
+    contentViewControllerProvider: { MyContentViewController() }
+)
+split.detailHost.tabSelectedBackgroundColor = .white                            // 选中：白底
+split.detailHost.tabUnselectedBackgroundColor = UIColor(white: 0.85, alpha: 1)  // 未选中：深一点的灰
+window?.rootViewController = split
+```
+
+自己直接持有宿主也可以，改法一样：
+
+```swift
+let host = DetailHostViewController(contentViewControllerProvider: { MyContentViewController() })
+host.tabSelectedBackgroundColor = .white
+host.tabUnselectedBackgroundColor = UIColor(white: 0.85, alpha: 1)
+```
+
+> 这两个属性可以在 `init` 之后立刻设置（此时视图还没加载），也可以在运行中随时改，两种时机都生效。
+> 只有颜色是开放项：Tab 条高度（44pt）、顶部间距（5pt）、左右内边距（5pt）与圆角半径（8pt）目前是库内的固定值，
+> 集中在 `DetailTabBarMetrics` 里，暂时不对外暴露。
 
 ## 生命周期兼容（UIScene / AppDelegate）
 

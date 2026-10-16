@@ -51,7 +51,9 @@ public final class SplitContainerViewController: UIViewController {
     private let minRightWidth: CGFloat = 320    // 右栏最小宽度
 
     // 右侧唯一的详情宿主（多 Tab 都在它里面）。内容页工厂由外部注入，转交给它。
-    private let detailHost: DetailHostViewController
+    // 公开出来，是为了让集成方能直接改宿主上的外观 / 行为项，例如
+    // detailHost.tabSelectedBackgroundColor、detailHost.deduplicateOpenedItems。
+    public let detailHost: DetailHostViewController
 
     // 分栏路由：列表发出的“打开内容”意图由它转交给右侧 detailHost。
     private let splitRouter: PPSplitContentRouter

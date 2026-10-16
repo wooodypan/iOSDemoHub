@@ -11,6 +11,24 @@ private struct DetailTabItem {
     var isPreview: Bool
 }
 
+// MARK: - Tab 条的尺寸常量
+// Tab 条（collectionView）整体 44pt 高；Tab 单元格顶部留 5pt 呼吸位、底边与 Tab 条底边对齐，
+// 于是单元格高度 = 44 - 5 = 39。
+// 这几个数字同时被「约束 / 刷新 / sizeForItemAt / 单元格圆角」用到，收在一处，
+// 以后想调高矮或间距只改这里，不用满文件找魔法数。
+private enum DetailTabBarMetrics {
+    // Tab 条整体高度（有 Tab 时）；没有 Tab 时会被压成 0，整条收起来。
+    static let barHeight: CGFloat = 36
+    // Tab 单元格顶部与 Tab 条顶部的间距（底部为 0，单元格贴着 Tab 条下边缘）。
+    static let cellTopSpacing: CGFloat = 1
+    // Tab 条左右两端的内边距。
+    static let horizontalPadding: CGFloat = 1
+    // 单元格高度：高度全给上面留出的间距，剩下的贴到底。
+    static let cellHeight: CGFloat = barHeight - cellTopSpacing
+    // 单元格圆角半径（只圆上面两个角，像浏览器标签页那样“从底边长出来”）。
+    static let cellCornerRadius: CGFloat = 8
+}
+
 // MARK: - DetailHostViewController
 // 右侧多 Tab 详情宿主：承载 VS Code 式”复用 Tab 策略”：
 //   - preview（单击）：复用已有的”预览 Tab”；没有则新建一个预览 Tab。
@@ -56,6 +74,28 @@ public final class DetailHostViewController: UIViewController,
     /// 去重只按 `PPContentItem.id` 比较，所以请保证你的业务 id 在同一个宿主里唯一。
     public var deduplicateOpenedItems: Bool = true
 
+    /// 选中 Tab 的底色（作用在单元格的 `contentView.backgroundColor` 上）。默认浅灰。
+    ///
+    /// 想跟自己的主题走，直接赋值即可：
+    /// ```swift
+    /// host.tabSelectedBackgroundColor = .white
+    /// host.tabUnselectedBackgroundColor = UIColor(white: 0.85, alpha: 1.0)
+    /// ```
+    /// 赋值后已经在屏幕上的 Tab 会立刻改色（只重刷单元格，不重建整条 Tab 条）。
+    public var tabSelectedBackgroundColor: UIColor = UIColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.00) {
+        didSet {
+            applyTabBarColors()
+        }
+    }
+
+    /// 未选中 Tab 的底色。默认 `.clear` —— 也就是不涂色，
+    /// 直接露出 Tab 条（collectionView）自身的背景色。赋值后的行为同上。
+    public var tabUnselectedBackgroundColor: UIColor = .clear {
+        didSet {
+            applyTabBarColors()
+        }
+    }
+
     // Mac Catalyst 专用：⌘W 在 Catalyst 下走 AppKit 的按键等价派发（NSWindow 的 performClose:），
     // UIKeyCommand 抢不过它，所以要额外装一个底层键盘监听兜底（见 CatalystKeyInterceptor）。
     // 必须强持有：这个实例被释放时监听会自动移除。
@@ -71,13 +111,26 @@ public final class DetailHostViewController: UIViewController,
         layout.scrollDirection = .horizontal
         layout.minimumLineSpacing = 8
         layout.minimumInteritemSpacing = 8
+        // 间距统一交给 sectionInset：顶部 5pt 留白、底部 0（单元格贴着 Tab 条下边缘）。
+        // 单元格高度 = 44 - 5，与这里的 top 5 + bottom 0 正好把 Tab 条填满，
+        // 所以不管 flow layout 在交叉轴上怎么对齐，单元格都只会落在「上留 5pt、下贴边」。
+        layout.sectionInset = UIEdgeInsets(
+            top: DetailTabBarMetrics.cellTopSpacing,
+            left: DetailTabBarMetrics.horizontalPadding,
+            bottom: 0,
+            right: DetailTabBarMetrics.horizontalPadding
+        )
         return layout
     }()
 
     private lazy var collectionView: UICollectionView = {
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.backgroundColor = UIColor(white: 0.97, alpha: 1.0)
+        collectionView.backgroundColor = UIColor(white: 0.90, alpha: 0.0)
+        // 关掉系统按安全区自动追加的 inset：Tab 条的上下间距我们自己用 sectionInset 算好了，
+        // 让系统再加一份会算不准（Tab 条本身就约束在安全区下方，并不需要系统补偿）。
+        collectionView.contentInsetAdjustmentBehavior = .never
+        collectionView.layer.cornerRadius = DetailTabBarMetrics.cellCornerRadius
         collectionView.showsHorizontalScrollIndicator = false
         collectionView.dataSource = self
         collectionView.delegate = self
@@ -109,7 +162,7 @@ public final class DetailHostViewController: UIViewController,
     // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
+        view.backgroundColor = .clear
         setupViews()
         refreshUI()
         // Mac Catalyst 下装底层键盘监听，用来真正拦下 ⌘W（详见方法内注释）。
@@ -342,7 +395,9 @@ public final class DetailHostViewController: UIViewController,
         cell.configure(
             title: tab.item?.title ?? "New Tab",
             selected: tab.id == selectedTabID,
-            isPreview: tab.isPreview
+            isPreview: tab.isPreview,
+            selectedBackgroundColor: tabSelectedBackgroundColor,
+            unselectedBackgroundColor: tabUnselectedBackgroundColor
         )
         cell.onClose = { [weak self] in
             self?.closeTab(withID: tab.id)
@@ -372,7 +427,9 @@ public final class DetailHostViewController: UIViewController,
         let width = title.size(withAttributes: [
             .font: UIFont.systemFont(ofSize: 14, weight: .semibold)
         ]).width
-        return CGSize(width: min(max(width + 46, 120), 240), height: 34)
+        // 高度取「Tab 条高度 - 顶部间距」：配合 layout 的 sectionInset（上 5 / 下 0）实现
+        // 底部与 Tab 条底边对齐、顶部留 5pt。
+        return CGSize(width: min(max(width + 46, 120), 240), height: DetailTabBarMetrics.cellHeight)
     }
 
     // MARK: - 私有：Tab 管理
@@ -415,6 +472,16 @@ public final class DetailHostViewController: UIViewController,
     }
 
     private func appendTab(for item: PPContentItem?, isPreview: Bool) {
+        // 先确保视图（以及下面的 Tab 条 collectionView）已经加载：
+        // viewDidLoad 里会做一次全量 reloadData，把当时已有的 Tab 作为“基线”交给集合视图。
+        // 若此前视图还没加载过（例如宿主刚 init 完、还没上屏就被要求打开内容，
+        // 典型场景是“启动时恢复上次的 Tab”），而 tabs 已经先被 append 了一个，
+        // 那么 viewDidLoad 的 reloadData 会把 1 个 Tab 当成基线，
+        // 紧接着下面的 insert(0) 就变成“插入前 1 个、插入后还是 1 个”，
+        // 集合视图直接抛 NSInternalInconsistencyException（Invalid batch updates）。
+        // 在这里主动把视图加载提到 append 之前，基线就永远是“append 之前的数量”，两边对得上。
+        loadViewIfNeeded()
+
         // 通过外部注入的工厂创建内容页（库不认识具体内容，显示什么由集成方决定）。
         let controller = contentViewControllerProvider()
         // 注入上报通道：内容页通过它上报“编辑态变化 / 想以某种方式打开内容”。
@@ -546,6 +613,17 @@ public final class DetailHostViewController: UIViewController,
         return IndexPath(item: index, section: 0)
     }
 
+    // 两个 Tab 底色（tabSelectedBackgroundColor / tabUnselectedBackgroundColor）改动后调用：
+    // 把已有 Tab 的单元格重刷一遍，颜色立刻生效。
+    // 只 reload 单元格、不做 reloadData —— 免得整条 Tab 条重建重排。
+    private func applyTabBarColors() {
+        // 视图还没加载（例如刚 init 完就赋值）时数据源尚未建立，直接跳过；
+        // 之后首次 configure 读到的就是新颜色，设置不会丢。
+        guard isViewLoaded, !tabs.isEmpty else { return }
+        let indexPaths = tabs.indices.map { IndexPath(item: $0, section: 0) }
+        collectionView.reloadItems(at: indexPaths)
+    }
+
     // Tab 条更新遵循“能少刷就少刷”：切 tab / 开 / 关都不全量 reloadData，
     // 而是按需 reload / insert / delete 受影响的 item，避免全部 cell 重建与全量布局。
     // 滚动放在 performBatchUpdates 的 completion 里：此时布局已就绪，
@@ -575,7 +653,7 @@ public final class DetailHostViewController: UIViewController,
 
     private func setupViews() {
         separatorView.translatesAutoresizingMaskIntoConstraints = false
-        separatorView.backgroundColor = UIColor(white: 0.87, alpha: 1.0)
+        separatorView.backgroundColor = UIColor(white: 0.97, alpha: 1.0)
 
         contentContainerView.translatesAutoresizingMaskIntoConstraints = false
         contentContainerView.backgroundColor = .white
@@ -588,6 +666,7 @@ public final class DetailHostViewController: UIViewController,
         // 侧栏展开/折叠按钮：与 Tab 条等高、位于其最左侧。
         sidebarToggleButton.translatesAutoresizingMaskIntoConstraints = false
         sidebarToggleButton.tintColor = UIColor(white: 0.35, alpha: 1.0)
+//        sidebarToggleButton.backgroundColor = UIColor(red: 0.91, green: 0.91, blue: 0.91, alpha: 1.00)
         sidebarToggleButton.addTarget(self, action: #selector(sidebarButtonTapped), for: .touchUpInside)
         updateSidebarButtonIcon()
 
@@ -597,7 +676,7 @@ public final class DetailHostViewController: UIViewController,
         view.addSubview(sidebarToggleButton)
         contentContainerView.addSubview(placeholderLabel)
 
-        let collectionViewHeightConstraint = collectionView.heightAnchor.constraint(equalToConstant: 44)
+        let collectionViewHeightConstraint = collectionView.heightAnchor.constraint(equalToConstant: DetailTabBarMetrics.barHeight)
         let separatorHeightConstraint = separatorView.heightAnchor.constraint(equalToConstant: 1)
         self.collectionViewHeightConstraint = collectionViewHeightConstraint
         self.separatorHeightConstraint = separatorHeightConstraint
@@ -672,7 +751,7 @@ public final class DetailHostViewController: UIViewController,
         collectionView.isHidden = !hasTabs
         separatorView.isHidden = !hasTabs
         placeholderLabel.isHidden = hasTabs
-        collectionViewHeightConstraint?.constant = hasTabs ? 44 : 0
+        collectionViewHeightConstraint?.constant = hasTabs ? DetailTabBarMetrics.barHeight : 0
         separatorHeightConstraint?.constant = hasTabs ? 1 : 0
 
         // 只挂载选中 tab 的 view，其余全部拆下（替代旧实现“全部挂树 + isHidden”）。
@@ -713,9 +792,21 @@ private final class DetailTabCell: UICollectionViewCell {
     static let reuseIdentifier = "DetailTabCell"
 
     private let titleLabel = UILabel()
-    private let closeButton = UIButton(type: .system)
+
+    // 关闭按钮用 .custom 而不是 .system，是踩过坑的：
+    // Mac Catalyst 会给 .system 按钮自动配一套「指针悬停外观」，鼠标压上去时系统会自己给按钮铺一层高亮背景，
+    // 那层背景叠在 Tab 底色上不受我们控制 —— 表现就是「x 的显隐正常，但悬停时的底色不对 / 被盖掉」。
+    // .custom 按钮没有这层系统外观，整个 Tab 的底色变化完全由我们自己说了算（标题颜色本来就已手动指定，不受影响）。
+    private let closeButton = UIButton(type: .custom)
 
     var onClose: (() -> Void)?
+
+    // 鼠标悬浮在本 Tab 上时，整个 Tab 要变的底色（= 宿主上的 tabSelectedBackgroundColor），
+    // 由 configure 从入参里取一份存下来。目前只有 Mac Catalyst 用得上它，但无条件声明，省得在 configure 里写条件编译。
+    private var hoverBackgroundColor: UIColor = .clear
+
+    // 没被悬浮时本 Tab 原本的底色（选中 / 未选中不一样），鼠标离开本 Tab 后要还原回它。
+    private var normalBackgroundColor: UIColor = .clear
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -728,12 +819,15 @@ private final class DetailTabCell: UICollectionViewCell {
     }
 
     private func setupViews() {
-        contentView.layer.cornerRadius = 8
+        contentView.layer.cornerRadius = DetailTabBarMetrics.cellCornerRadius
+        // 只圆上面两个角、下面两个角保持直角：单元格底边与 Tab 条底边对齐，
+        // 圆底角会在底边留出两个缺口，看起来像浮在空中；直角则像标签页“长”在底边上。
+        contentView.layer.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
 //        contentView.layer.borderWidth = 1
 //        contentView.layer.borderColor = UIColor(white: 0.80, alpha: 0.5).cgColor
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+        titleLabel.font = UIFont.systemFont(ofSize: 14)//, weight: .semibold)
         titleLabel.textColor = .black
         titleLabel.lineBreakMode = .byTruncatingTail
 
@@ -742,6 +836,16 @@ private final class DetailTabCell: UICollectionViewCell {
         closeButton.setTitleColor(UIColor(red: 0.23, green: 0.23, blue: 0.23, alpha: 1.00), for: .normal)
         closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        #if targetEnvironment(macCatalyst)
+        // Mac 上是用鼠标操作的：默认先把关闭按钮藏起来、底色用「未悬浮」的那份，
+        // 鼠标挪到本 Tab 上才把 x 露出来、底色点亮，对齐网页里 CSS hover 的效果；
+        // 触摸平台上没有悬浮一说，保持一直显示（下面这些只在 Catalyst 编译）。
+        resetHoverAppearance()
+        // UIHoverGestureRecognizer 只在鼠标进出 / 移动时回调，不会抢走点击事件，所以放心挂在单元格上。
+        // 挂在单元格（而不是按钮）上，是因为“悬浮区”是整个 Tab：指针落在标题上也算悬浮。
+        addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(handleCellHover(_:))))
+        #endif
 
         contentView.addSubview(titleLabel)
         contentView.addSubview(closeButton)
@@ -758,9 +862,60 @@ private final class DetailTabCell: UICollectionViewCell {
         ])
     }
 
-    func configure(title: String, selected: Bool, isPreview: Bool) {
+    // 单元格会被复用：上一次悬浮留下的“按钮已显示 / 底色已点亮”状态必须清掉，
+    // 否则快速滚动时会闪出带着 x 或带着亮底色的错误帧（复用时指针通常不会再触发一次 .ended）。
+    override func prepareForReuse() {
+        super.prepareForReuse()
+        #if targetEnvironment(macCatalyst)
+        resetHoverAppearance()
+        #endif
+    }
+
+    #if targetEnvironment(macCatalyst)
+
+    // 把单元格恢复成“没被悬浮”的样子：藏起关闭按钮 + 把 Tab 底色还原回原本的色。
+    private func resetHoverAppearance() {
+        closeButton.isHidden = true
+        contentView.backgroundColor = normalBackgroundColor
+    }
+
+    // 鼠标在本单元格上进出 / 移动时回调。
+    // 悬浮的判定粒度是「整个 Tab」：指针只要落在单元格里（标题上、按钮上都算），就露出关闭按钮并把底色点亮。
+    @objc private func handleCellHover(_ gesture: UIHoverGestureRecognizer) {
+        switch gesture.state {
+        case .began, .changed:
+            // 指针进了这个 Tab：露出关闭按钮，同时把整个 Tab 的底色换成「选中 Tab 的底色」，
+            // 效果就是鼠标划过的 Tab 会亮一下（对齐网页里的 CSS hover）。
+            closeButton.isHidden = false
+            contentView.backgroundColor = hoverBackgroundColor
+
+        case .ended, .cancelled:
+            // 指针离开单元格；cancelled 是指针被系统收走（例如切到别的窗口），同样按离开处理。
+            resetHoverAppearance()
+
+        default:
+            break
+        }
+    }
+
+    #endif
+
+    // 底色不再写死在单元格里：由宿主把两个公开变量传进来，
+    // 集成方改宿主上的 tabSelectedBackgroundColor / tabUnselectedBackgroundColor 就能换肤。
+    // 单元格会被复用，所以每次配置都要重新赋一次色，不能只在 init 里设。
+    func configure(
+        title: String,
+        selected: Bool,
+        isPreview: Bool,
+        selectedBackgroundColor: UIColor,
+        unselectedBackgroundColor: UIColor
+    ) {
         titleLabel.text = title
-        contentView.backgroundColor = selected ? UIColor(red: 0.90, green: 0.90, blue: 0.94, alpha: 1.00) : UIColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.00)
+        // 先记住「非悬浮时本来该是什么色」，再铺上去；鼠标离开本 Tab 时要以它为基准还原。
+        normalBackgroundColor = selected ? selectedBackgroundColor : unselectedBackgroundColor
+        contentView.backgroundColor = normalBackgroundColor
+        // 记一份选中底色给悬浮状态用：鼠标停在本 Tab 上时，整个 Tab 的底色要变成选中 Tab 的底色。
+        hoverBackgroundColor = selectedBackgroundColor
         // 预览 Tab 用斜体，强调“可复用”；正式 Tab 用正常字体（半粗）。
         titleLabel.font = isPreview
             ? UIFont.italicSystemFont(ofSize: 14)
