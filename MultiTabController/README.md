@@ -124,14 +124,14 @@ techList.router = router
 
 - 单个 Tab 只圆**上面两个角**（半径 8pt），下面两个角保持直角，底边与 Tab 条的底边对齐 —— 看起来像浏览器标签页那样「从底边长出来」，而不是浮在半空；
 - Tab 顶部与 Tab 条顶边留 **5pt** 间距（单元格高度 = Tab 条高度 44pt − 5pt）；
-- 选中 Tab 底色默认浅灰，未选中默认透明（露出 Tab 条自身的底色 `UIColor(white: 0.92, alpha: 1)`）；
+- 选中 Tab 底色默认是动态色（浅色下浅灰、深色下深灰），未选中默认透明（露出底下的容器底色 `UIColor.pp_systemBackground`）；
 - **Mac Catalyst 下关闭按钮（x）是悬浮显示的**：默认藏起来，鼠标悬浮到该 Tab 上才出现（对齐网页里的 CSS hover）；**悬浮的判定粒度是整个 Tab**（指针落在标题上也算），此时整个 Tab 的底色（`contentView.backgroundColor`）会变成 `tabSelectedBackgroundColor`，指针移出即恢复。触摸平台（iPhone / iPad）没有悬浮这个概念，x 一直显示、底色不随指针变。
 
 **选中 / 未选中底色已开放给外部**，赋值后已经在屏幕上的 Tab 会立刻改色（库里只重刷已有单元格，不会重建整条 Tab 条）：
 
 | 属性 | 默认值 | 说明 |
 |---|---|---|
-| `DetailHostViewController.tabSelectedBackgroundColor` | `UIColor(red: 0.97, green: 0.97, blue: 0.97, alpha: 1)` | 选中 Tab 的底色，作用在单元格的 `contentView.backgroundColor` 上 |
+| `DetailHostViewController.tabSelectedBackgroundColor` | `UIColor.pp_tabSelectedBackground`（浅色 `#F2F2F2` / 深色 `#474747`） | 选中 Tab 的底色，作用在单元格的 `contentView.backgroundColor` 上 |
 | `DetailHostViewController.tabUnselectedBackgroundColor` | `.clear` | 未选中 Tab 的底色 |
 
 ```swift
@@ -159,6 +159,37 @@ host.tabUnselectedBackgroundColor = UIColor(white: 0.85, alpha: 1)
 > 这两个属性可以在 `init` 之后立刻设置（此时视图还没加载），也可以在运行中随时改，两种时机都生效。
 > 只有颜色是开放项：Tab 条高度（44pt）、顶部间距（5pt）、左右内边距（5pt）与圆角半径（8pt）目前是库内的固定值，
 > 集中在 `DetailTabBarMetrics` 里，暂时不对外暴露。
+
+## 深色模式（夜间模式）
+
+库内所有颜色都走**系统语义色**，所以集成方不需要写任何代码 —— 系统切到深色，界面自动跟着变（前提是 App 没有把 `UIUserInterfaceStyle` 锁成 Light）。
+
+| 界面元素 | 颜色来源 |
+|---|---|
+| 容器 / 内容区背景 | `UIColor.pp_systemBackground`（浅色白 / 深色黑） |
+| 选中 Tab 底色 | `DetailHostViewController.tabSelectedBackgroundColor`，默认 `UIColor.pp_tabSelectedBackground` |
+| 左右分栏线、底部标签栏上边线 | `UIColor.pp_separator` |
+| Tab 条与内容区之间的细线 | `UIColor.pp_hairlineSeparator` |
+| Tab 标题、侧栏按钮图标 | `UIColor.pp_label` |
+| 占位文案 | `UIColor.pp_tertiaryLabel` |
+
+这些语义色集中定义在库内的 `UIColor+Compatibility.swift`：
+
+- **iOS 13+** 直接返回系统动态色（`.systemBackground`、`.label`、……）。动态色是「解析时才求值」的，系统切换外观时 UIKit 会自动重新解析并重绘，不需要手动刷新页面；
+- **iOS 12** 没有系统级深色模式（深色模式是 iOS 13 才引入的），固定返回浅色那一份，表现与旧版本完全一致。
+
+想换成自己的配色，用 `UIColor.pp_adaptive(light:dark:)` 造一个动态色，再赋给公开变量即可：
+
+```swift
+split.detailHost.tabSelectedBackgroundColor = .pp_adaptive(
+    light: UIColor(white: 0.93, alpha: 1.0),
+    dark: UIColor(white: 0.30, alpha: 1.0)
+)
+```
+
+> ⚠️ 一个容易踩的坑：`CALayer` 的 `borderColor` 是 `CGColor`，**不参与动态色解析**，外观切换时不会自动更新，
+> 需要在 `traitCollectionDidChange(_:)`（iOS 17+ 建议用 `registerForTraitChanges`）里手动重设。
+> 库内的 Tab 单元格没有使用 layer 描边，所以不受影响；自己扩展样式时请留意。
 
 ## 生命周期兼容（UIScene / AppDelegate）
 

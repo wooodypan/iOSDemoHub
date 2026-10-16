@@ -74,7 +74,8 @@ public final class DetailHostViewController: UIViewController,
     /// 去重只按 `PPContentItem.id` 比较，所以请保证你的业务 id 在同一个宿主里唯一。
     public var deduplicateOpenedItems: Bool = true
 
-    /// 选中 Tab 的底色（作用在单元格的 `contentView.backgroundColor` 上）。默认浅灰。
+    /// 选中 Tab 的底色（作用在单元格的 `contentView.backgroundColor` 上）。
+    /// 默认值 `UIColor.pp_tabSelectedBackground` 是动态色：浅色下浅灰、深色下深灰，跟随系统外观自动变。
     ///
     /// 想跟自己的主题走，直接赋值即可：
     /// ```swift
@@ -82,7 +83,8 @@ public final class DetailHostViewController: UIViewController,
     /// host.tabUnselectedBackgroundColor = UIColor(white: 0.85, alpha: 1.0)
     /// ```
     /// 赋值后已经在屏幕上的 Tab 会立刻改色（只重刷单元格，不重建整条 Tab 条）。
-    public var tabSelectedBackgroundColor: UIColor = UIColor(red: 0.95, green: 0.95, blue: 0.95, alpha: 1.00) {
+    /// 想自定义成「浅色/深色各一份」的颜色，可以用 `UIColor.pp_adaptive(light:dark:)` 造一个。
+    public var tabSelectedBackgroundColor: UIColor = .pp_tabSelectedBackground {
         didSet {
             applyTabBarColors()
         }
@@ -126,7 +128,8 @@ public final class DetailHostViewController: UIViewController,
     private lazy var collectionView: UICollectionView = {
         let collectionView = UICollectionView(frame: .zero, collectionViewLayout: collectionViewLayout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.backgroundColor = UIColor(white: 0.90, alpha: 0.0)
+        // 标签条自身不涂色（完全透明），露出后面的容器背景；容器背景是语义色，深色下会跟着变黑。
+        collectionView.backgroundColor = .clear
         // 关掉系统按安全区自动追加的 inset：Tab 条的上下间距我们自己用 sectionInset 算好了，
         // 让系统再加一份会算不准（Tab 条本身就约束在安全区下方，并不需要系统补偿）。
         collectionView.contentInsetAdjustmentBehavior = .never
@@ -653,10 +656,13 @@ public final class DetailHostViewController: UIViewController,
 
     private func setupViews() {
         separatorView.translatesAutoresizingMaskIntoConstraints = false
-        separatorView.backgroundColor = UIColor(white: 0.97, alpha: 1.0)
+        // 分隔线用语义色：浅色下是原来那条几乎看不见的 0.97，深色下自动换成半透明白，
+        // 不然纯黑的背景上会挂着一条刺眼的白线。
+        separatorView.backgroundColor = .pp_hairlineSeparator
 
         contentContainerView.translatesAutoresizingMaskIntoConstraints = false
-        contentContainerView.backgroundColor = .white
+        // 内容容器跟着系统背景走：浅色白、深色黑（原来是写死的白色）。
+        contentContainerView.backgroundColor = .pp_systemBackground
 
         placeholderLabel.translatesAutoresizingMaskIntoConstraints = false
         placeholderLabel.text = "← 请从左侧选择文章"
@@ -665,7 +671,8 @@ public final class DetailHostViewController: UIViewController,
 
         // 侧栏展开/折叠按钮：与 Tab 条等高、位于其最左侧。
         sidebarToggleButton.translatesAutoresizingMaskIntoConstraints = false
-        sidebarToggleButton.tintColor = UIColor(white: 0.35, alpha: 1.0)
+        // 图标颜色跟随文字色：浅色近黑、深色近白（原来是写死的 0.35 深灰，深色下会看不见）。
+        sidebarToggleButton.tintColor = .pp_label
 //        sidebarToggleButton.backgroundColor = UIColor(red: 0.91, green: 0.91, blue: 0.91, alpha: 1.00)
         sidebarToggleButton.addTarget(self, action: #selector(sidebarButtonTapped), for: .touchUpInside)
         updateSidebarButtonIcon()
@@ -828,12 +835,14 @@ private final class DetailTabCell: UICollectionViewCell {
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = UIFont.systemFont(ofSize: 14)//, weight: .semibold)
-        titleLabel.textColor = .black
+        // 文字用语义色：浅色近黑、深色近白（原来是写死的黑色，深色下等于看不见）。
+        titleLabel.textColor = .pp_label
         titleLabel.lineBreakMode = .byTruncatingTail
 
         closeButton.translatesAutoresizingMaskIntoConstraints = false
         closeButton.setTitle("x", for: .normal)
-        closeButton.setTitleColor(UIColor(red: 0.23, green: 0.23, blue: 0.23, alpha: 1.00), for: .normal)
+        // 关闭按钮的 x 也走语义色，比正文浅一档，不抢标题的视线。
+        closeButton.setTitleColor(.pp_secondaryLabel, for: .normal)
         closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 

@@ -37,6 +37,10 @@ public class ArticleListViewController: UIViewController {
     private func setupTableView() {
         tableView = UITableView(frame: .zero, style: .plain)
         tableView.translatesAutoresizingMaskIntoConstraints = false
+        // 显式指定表格底色与文字/分割线颜色，让它在深色下也跟系统走：
+        // tableView 的默认值本来就是系统色，这里写出来是为了「一眼能看出这个页面适配过深色」，也避免以后换容器时漏掉。
+        tableView.backgroundColor = .pp_systemBackground
+        tableView.separatorColor = .pp_separator
         tableView.dataSource = self
         tableView.delegate = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "Cell")
@@ -100,6 +104,9 @@ extension ArticleListViewController: UITableViewDataSource, UITableViewDelegate 
     public func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath)
         let item = articles[indexPath.row]
+        // 单元格底色与文字色都显式跟随系统外观（cell 会被复用，所以每次配置都重新赋一遍）。
+        cell.backgroundColor = .pp_systemBackground
+        cell.textLabel?.textColor = .pp_label
         cell.textLabel?.text = item.title
         cell.accessoryType = .disclosureIndicator
         return cell

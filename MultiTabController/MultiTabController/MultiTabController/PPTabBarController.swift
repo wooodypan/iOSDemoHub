@@ -37,15 +37,15 @@ public final class PPTabBarController: UIViewController {
         }
     }
 
-    /// 未选中态的图标与文字颜色。
-    public var unselectedTintColor: UIColor = UIColor(white: 0.35, alpha: 1.0) {
+    /// 未选中态的图标与文字颜色。默认取次要标签色：浅色下深灰、深色下浅灰（原来是写死的 0.35 深灰）。
+    public var unselectedTintColor: UIColor = .pp_secondaryLabel {
         didSet {
             updateButtonStyles()
         }
     }
 
-    /// 标签栏背景色。
-    public var tabBarBackgroundColor: UIColor = .white {
+    /// 标签栏背景色。默认跟随系统背景（浅色白 / 深色黑）。
+    public var tabBarBackgroundColor: UIColor = .pp_systemBackground {
         didSet {
             tabBarContainerView.backgroundColor = tabBarBackgroundColor
         }
@@ -92,7 +92,8 @@ public final class PPTabBarController: UIViewController {
     // public 类里 override 系统 open 方法同样声明 public，与库内其它容器保持一致口径。
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
+        // 根视图与标签栏底色都跟随系统外观，避免深色下露出一块白。
+        view.backgroundColor = .pp_systemBackground
         setupViews()
         reloadButtons()
         // 初始选中不触发回调（此时外部还没机会设置 onSelectedIndexChanged）。
@@ -158,7 +159,7 @@ public final class PPTabBarController: UIViewController {
         buttonStackView.spacing = 0
 
         tabBarSeparatorView.translatesAutoresizingMaskIntoConstraints = false
-        tabBarSeparatorView.backgroundColor = UIColor(white: 0.85, alpha: 1.0)
+        tabBarSeparatorView.backgroundColor = .pp_separator
 
         contentContainerView.translatesAutoresizingMaskIntoConstraints = false
 

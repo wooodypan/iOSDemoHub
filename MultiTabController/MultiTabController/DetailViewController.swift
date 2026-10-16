@@ -96,6 +96,8 @@ final class DetailViewController: UIViewController, PPContentDisplaying {
 
         // Title
         titleLabel.font = UIFont.systemFont(ofSize: 22, weight: .bold)
+        // 标题文字色显式指定：UILabel 的默认色是写死的黑，深色模式下会「黑字黑底」看不见。
+        titleLabel.textColor = .pp_label
         titleLabel.numberOfLines = 0
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 

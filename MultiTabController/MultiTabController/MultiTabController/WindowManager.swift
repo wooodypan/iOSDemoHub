@@ -143,6 +143,8 @@ class NewWindowViewController: UIViewController {
 
         titleLabel.text = item.title
         titleLabel.font = UIFont.systemFont(ofSize: 22, weight: .bold)
+        // 文字色显式跟随系统外观，避免深色下「黑字黑底」。
+        titleLabel.textColor = .pp_label
         titleLabel.numberOfLines = 0
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
 

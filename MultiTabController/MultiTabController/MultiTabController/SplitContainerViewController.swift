@@ -96,7 +96,8 @@ public final class SplitContainerViewController: UIViewController {
     // 库要对外暴露类型，故声明为 public；覆盖系统 open 方法用 internal 亦可，这里统一对外口径。
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .white
+        // 根视图底色跟随系统外观：浅色白、深色黑。
+        view.backgroundColor = .pp_systemBackground
         setupLayout()
         embed(leftNavigationController, in: leftContainerView)
         embed(detailHost, in: rightContainerView)
@@ -113,14 +114,15 @@ public final class SplitContainerViewController: UIViewController {
             $0.translatesAutoresizingMaskIntoConstraints = false
         }
 
-        leftContainerView.backgroundColor = .white
-        rightContainerView.backgroundColor = .white
+        // 左右两栏的底色也走语义色：深色下如果还留白，就会变成两块发光的白板。
+        leftContainerView.backgroundColor = .pp_systemBackground
+        rightContainerView.backgroundColor = .pp_systemBackground
         // 抓取区本身透明，真正的“线”由里面的 dividerLineView 画出。
         dividerHandleView.backgroundColor = .clear
 
         // 可见细线：放在抓取区正中央，宽 1pt。
         dividerLineView.translatesAutoresizingMaskIntoConstraints = false
-        dividerLineView.backgroundColor = UIColor(white: 0.85, alpha: 1.0)
+        dividerLineView.backgroundColor = .pp_separator
         dividerHandleView.addSubview(dividerLineView)
 
         // 悬浮“拖动标志”：三个小圆点，平时隐藏，鼠标移到分割线上才出现。
@@ -183,7 +185,11 @@ public final class SplitContainerViewController: UIViewController {
         for _ in 0..<3 {
             let dot = UIView()
             dot.translatesAutoresizingMaskIntoConstraints = false
-            dot.backgroundColor = UIColor(white: 0.55, alpha: 1.0)
+            // 悬浮提示的三个小圆点：浅色下是中灰，深色下换成更亮的灰（0.55 的灰在纯黑上看不清）。
+            dot.backgroundColor = .pp_adaptive(
+                light: UIColor(white: 0.55, alpha: 1.0),
+                dark: UIColor(white: 0.75, alpha: 1.0)
+            )
             dot.layer.cornerRadius = dotSize / 2
             hoverGripView.addSubview(dot)
             // 竖向排列：每个圆点左右撑满（leading/trailing 对齐容器），
@@ -260,7 +266,7 @@ public final class SplitContainerViewController: UIViewController {
     private func updateDividerAppearance(hovering: Bool) {
         dividerLineView.backgroundColor = hovering
             ? UIColor.systemBlue
-            : UIColor(white: 0.85, alpha: 1.0)
+            : .pp_separator
         hoverGripView.isHidden = !hovering
     }
 
