@@ -50,7 +50,7 @@ enum DemoRootFactory {
             ("Tech", symbolImage(named: "cpu"), DataStore.techArticles),
             ("News", symbolImage(named: "newspaper"), DataStore.newsArticles)
         ]
-        let lists = categories.map { title, _, items -> UIViewController in
+        let lists: [ArticleListViewController] = categories.map { title, _, items in
             let list = ArticleListViewController(articles: items, title: title)
             list.router = router
             return list
@@ -60,10 +60,28 @@ enum DemoRootFactory {
             viewControllers: lists,
             items: categories.map { PPTabItem(title: $0.title, image: $0.image) }
         )
-        return SplitContainerViewController(
+        let split = SplitContainerViewController(
             leftViewController: sidebar,
             router: router,
             contentViewControllerProvider: { DetailViewController() }
         )
+
+        // 右侧选中 Tab 变化 -> 同步左侧列表高亮（VS Code 资源管理器式联动）：
+        //   1. 在所有列表里清掉旧高亮，再给“包含该内容”的那个列表高亮对应行；
+        //   2. 如果这条内容属于另一个分类的列表，把左侧标签栏也切过去，
+        //      这样右侧切到 News 的 Tab 时，左侧不会还停在 Tech 列表上。
+        split.detailHost.onSelectedItemChanged = { [weak sidebar] item in
+            for (index, list) in lists.enumerated() {
+                if let item = item, list.containsItem(withID: item.id) {
+                    list.setHighlightedItemID(item.id, scrollToSelection: true)
+                    if sidebar?.selectedIndex != index {
+                        sidebar?.selectIndex(index)
+                    }
+                } else {
+                    list.setHighlightedItemID(nil)
+                }
+            }
+        }
+        return split
     }
 }

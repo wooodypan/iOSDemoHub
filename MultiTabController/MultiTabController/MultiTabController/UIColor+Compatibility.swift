@@ -46,6 +46,15 @@ extension UIColor {
         )
     }
 
+    /// 左侧列表选中行的底色（模仿 VS Code 资源管理器里被选中的文件）。
+    /// 浅色下是中性灰；深色下换成比纯黑背景亮一档的灰。
+    static var pp_selectedRowBackground: UIColor {
+        return pp_adaptive(
+            light: UIColor(white: 0.90, alpha: 1.0),
+            dark: UIColor(white: 0.26, alpha: 1.0)
+        )
+    }
+
     // MARK: - 文字
 
     /// 主要文字色（标题、正文）：iOS 13+ 用 `.label`（浅色近黑 / 深色近白），iOS 12 用黑色。

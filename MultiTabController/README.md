@@ -160,6 +160,40 @@ host.tabUnselectedBackgroundColor = UIColor(white: 0.85, alpha: 1)
 > 只有颜色是开放项：Tab 条高度（44pt）、顶部间距（5pt）、左右内边距（5pt）与圆角半径（8pt）目前是库内的固定值，
 > 集中在 `DetailTabBarMetrics` 里，暂时不对外暴露。
 
+## 同步左侧列表高亮（选中项回调）
+
+右侧多 Tab 宿主会在**选中项变化**时通知外部：点 Tab、打开 / 复用内容、关闭 Tab 后自动切到相邻 Tab，都会触发。
+左侧列表（文件树、文章列表等）可以据此高亮对应行，做出 VS Code 资源管理器那种「右边切哪个，左边亮哪个」的联动。
+
+两种接入方式二选一，都会触发：
+
+```swift
+import MultiTabController
+
+// 方式一：闭包（简单场景）
+split.detailHost.onSelectedItemChanged = { item in
+    // item == nil：当前没有选中内容（所有 Tab 已关闭，或选中的是空 Tab）
+    sidebar.setHighlightedItemID(item?.id)   // ← 换成你自己的列表高亮方法
+}
+
+// 方式二：代理（需要多处监听、或想按职责拆开时）
+final class SidebarSelectionCoordinator: DetailHostViewControllerDelegate {
+    func detailHost(_ host: DetailHostViewController, didSelectItem item: PPContentItem?) {
+        sidebar.setHighlightedItemID(item?.id)   // ← 同上
+    }
+}
+let coordinator = SidebarSelectionCoordinator()
+split.detailHost.delegate = coordinator   // delegate 是 weak，记得自己强持有 coordinator
+```
+
+补充约定：
+
+- 当前选中项可以直接通过 `split.detailHost.selectedItem` 读取（`nil` 表示没有选中内容）。
+- 给 `delegate` / `onSelectedItemChanged` **赋值时会立刻按当前选中项回调一次**，所以晚接入也能补上初始高亮。
+- 回调按**内容 id** 去重：关闭未选中的 Tab 等「选中项其实没变」的场景不会重复通知；预览 Tab 被复用、内容换掉时会通知，因为 id 变了。
+- `delegate` 是 `weak` 引用；`onSelectedItemChanged` 由宿主强持有，闭包里请用 `weak` 捕获外部对象。
+- 仓库内 Demo 的接线见 `DemoRootFactory.makeiPadOrMacRoot()`：右侧切到另一分类的内容时，左侧标签栏也会自动切过去并高亮该行。
+
 ## 深色模式（夜间模式）
 
 库内所有颜色都走**系统语义色**，所以集成方不需要写任何代码 —— 系统切到深色，界面自动跟着变（前提是 App 没有把 `UIUserInterfaceStyle` 锁成 Light）。

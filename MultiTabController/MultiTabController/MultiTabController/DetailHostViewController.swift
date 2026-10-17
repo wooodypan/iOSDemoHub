@@ -29,6 +29,17 @@ private enum DetailTabBarMetrics {
     static let cellCornerRadius: CGFloat = 8
 }
 
+// MARK: - DetailHostViewControllerDelegate
+// 选中 Tab 变化时的通知协议。
+// 库不关心左侧列表长什么样，只负责在“当前选中的内容变了”时告诉集成方；
+// 集成方可以据此同步左侧列表的高亮（模仿 VS Code 资源管理器：右侧切哪个文件，左侧就高亮哪一行）。
+public protocol DetailHostViewControllerDelegate: AnyObject {
+    /// 右侧选中的 Tab 发生变化（点 Tab、打开 / 复用内容、关闭 Tab 后自动切换都会触发）。
+    /// - Parameter item: 新选中 Tab 对应的内容；`nil` 表示当前没有选中任何内容
+    ///   （例如所有 Tab 都已关闭，或选中的是一个没有内容的空 Tab）。
+    func detailHost(_ host: DetailHostViewController, didSelectItem item: PPContentItem?)
+}
+
 // MARK: - DetailHostViewController
 // 右侧多 Tab 详情宿主：承载 VS Code 式”复用 Tab 策略”：
 //   - preview（单击）：复用已有的”预览 Tab”；没有则新建一个预览 Tab。
@@ -62,6 +73,54 @@ public final class DetailHostViewController: UIViewController,
 
     /// 点击侧栏按钮时的回调：由父容器（SplitContainerViewController）执行左栏的展开/折叠。
     public var onToggleSidebarRequest: (() -> Void)?
+
+    // MARK: 选中项变化通知（供左侧列表同步高亮）
+
+    /// 选中项变化代理。与 `onSelectedItemChanged` 二选一即可，两者都会触发。
+    /// - Note: 赋值时会立即按当前选中项回调一次，方便晚接入的集成方补上初始高亮。
+    public weak var delegate: DetailHostViewControllerDelegate? {
+        didSet { sendCurrentSelectionToListeners() }
+    }
+
+    /// 选中项变化回调（闭包版）。`nil` 表示当前没有选中任何内容。
+    /// 适合“只有一个同步逻辑”的简单接入；需要多处监听时用 delegate。
+    /// - Note: 赋值时会立即按当前选中项回调一次；本属性会被宿主强持有，
+    ///   闭包里请用 `weak` 捕获外部对象，避免循环引用。
+    public var onSelectedItemChanged: ((PPContentItem?) -> Void)? {
+        didSet { sendCurrentSelectionToListeners() }
+    }
+
+    /// 当前选中 Tab 对应的内容；没有选中 Tab、或选中的是空 Tab 时为 `nil`。
+    public var selectedItem: PPContentItem? {
+        guard let id = selectedTabID else { return nil }
+        return tabs.first(where: { $0.id == id })?.item
+    }
+
+    // 通知去重：关闭“未选中的 Tab”等场景选中项并没有变，没必要让左侧列表重复刷新。
+    private var hasNotifiedSelection = false
+    private var lastNotifiedItemID: String?
+
+    // 统一的通知出口：选中项真的变了才回调。
+    // 注意按“内容 id”而不是 tab id 判断：预览 Tab 被复用时 tab id 不变，但内容换了，
+    // 左侧高亮也必须跟着换。
+    private func notifySelectionChanged() {
+        let item = selectedItem
+        if hasNotifiedSelection, lastNotifiedItemID == item?.id { return }
+        hasNotifiedSelection = true
+        lastNotifiedItemID = item?.id
+        delegate?.detailHost(self, didSelectItem: item)
+        onSelectedItemChanged?(item)
+    }
+
+    // 新监听方接入时（赋值 delegate / 闭包）立刻把当前状态同步给它，
+    // 这样即使 Tab 早已打开、监听是后来才接上的，左侧也能拿到正确的初始高亮。
+    private func sendCurrentSelectionToListeners() {
+        let item = selectedItem
+        hasNotifiedSelection = true
+        lastNotifiedItemID = item?.id
+        delegate?.detailHost(self, didSelectItem: item)
+        onSelectedItemChanged?(item)
+    }
 
     /// 是否按内容 ID（`PPContentItem.id`）去重。默认 **true**。
     ///
@@ -350,6 +409,9 @@ public final class DetailHostViewController: UIViewController,
                 indexPaths.append(previousIndex)
             }
             updateTabBar(reload: indexPaths, insert: [], delete: [])
+
+            // 预览槽位里的内容换了：通知外部同步左侧高亮。
+            notifySelectionChanged()
         } else {
             // 没有预览 Tab（当前都是正式 Tab）-> 新建一个预览 Tab。
             appendTab(for: item, isPreview: true)
@@ -419,6 +481,9 @@ public final class DetailHostViewController: UIViewController,
             indexPaths.append(previousIndex)
         }
         updateTabBar(reload: indexPaths, insert: [], delete: [])
+
+        // 用户点了另一个 Tab：通知外部同步左侧高亮。
+        notifySelectionChanged()
     }
 
     public func collectionView(
@@ -465,6 +530,9 @@ public final class DetailHostViewController: UIViewController,
             indexPaths.append(previousIndex)
         }
         updateTabBar(reload: indexPaths, insert: [], delete: [])
+
+        // 去重命中、程序化切到某个已有 Tab：通知外部同步左侧高亮。
+        notifySelectionChanged()
     }
 
     private func load(item: PPContentItem, into index: Int) {
@@ -511,6 +579,9 @@ public final class DetailHostViewController: UIViewController,
             insert: [IndexPath(item: tabs.count - 1, section: 0)],
             delete: []
         )
+
+        // 新建 Tab 后它自动成为选中项：通知外部同步左侧高亮。
+        notifySelectionChanged()
     }
 
     private func closeTab(withID id: String) {
@@ -532,6 +603,10 @@ public final class DetailHostViewController: UIViewController,
         }
 
         refreshUI()
+
+        // 关闭可能让选中项变成相邻 Tab，或变成“没有选中项”：通知外部同步左侧高亮。
+        // （关的是未选中的 Tab 时，去重逻辑会发现选中项没变，不会重复回调。）
+        notifySelectionChanged()
 
         // 新增：所有 Tab 都已关闭，且外部开启了退出确认 -> 弹出“是否退出 App”确认框。
         // 无论关闭途径（Command+W 快捷键、点 Tab 上的关闭按钮）都统一生效。
