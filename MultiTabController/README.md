@@ -21,6 +21,7 @@
   - iPad 仍走 `UIKeyCommand`；`buildMenu` 移除 `.close` 菜单项 + `canPerformAction` 拦截 `performClose:` 作为 UIKit 层的补充
   - 若 App 使用多窗口（多个 `UIWindowScene`），建议同时在 `AppDelegate` 中 `override buildMenu(with:)` 移除 `.close` 菜单（主菜单是全局单例）
 - **DeviceHelper / WindowManager**：设备判断与多窗口（新窗口）能力
+- **PPAppearance**：App 内手动切换浅色 / 深色，不跟系统。`PPAppearance.mode = .dark` 一行生效，可选持久化记忆；默认仍是跟随系统，iOS 12 上自动无效。详见下文「[App 内手动切换浅色 / 深色](#app-内手动切换浅色--深色)」
 - **同时兼容两套生命周期**：UIScene 生命周期（iOS 27 SDK 起 Apple 强制要求，见 [TN3187](https://developer.apple.com/documentation/Technotes/tn3187-Migrating-to-the-UIKit-scene-based-life-cycle)）与传统 AppDelegate 生命周期，见下文「[生命周期兼容](#生命周期兼容uiscene--appdelegate)」
 
 > 示例 / Demo：`ArticleListViewController.swift`、`DataStore.swift`、`AppDelegate.swift` 位于宿主层（与 `AppDelegate` 平级），**不随 pod / SPM 发布**。它们是仓库自带的完整接线示例；集成时请用你自己的列表控制器，只需让它持有 `PPContentRouting` 并产出 `PPContentItem` 即可。
@@ -197,6 +198,7 @@ split.detailHost.delegate = coordinator   // delegate 是 weak，记得自己强
 ## 深色模式（夜间模式）
 
 库内所有颜色都走**系统语义色**，所以集成方不需要写任何代码 —— 系统切到深色，界面自动跟着变（前提是 App 没有把 `UIUserInterfaceStyle` 锁成 Light）。
+想反过来：在 App 内手动锁死浅色 / 深色、不跟系统，看下一节 `PPAppearance`。
 
 | 界面元素 | 颜色来源 |
 |---|---|
@@ -224,6 +226,64 @@ split.detailHost.tabSelectedBackgroundColor = .pp_adaptive(
 > ⚠️ 一个容易踩的坑：`CALayer` 的 `borderColor` 是 `CGColor`，**不参与动态色解析**，外观切换时不会自动更新，
 > 需要在 `traitCollectionDidChange(_:)`（iOS 17+ 建议用 `registerForTraitChanges`）里手动重设。
 > 库内的 Tab 单元格没有使用 layer 描边，所以不受影响；自己扩展样式时请留意。
+
+## App 内手动切换浅色 / 深色
+
+只跟系统不够用 —— 用户想在 App 里自己锁死浅色或深色（阅读类、看板类 App 很常见）。
+库提供了 `PPAppearance`，一行代码切换，不需要自己遍历视图树改 `overrideUserInterfaceStyle`。
+
+### 最小接入（3 步）
+
+```swift
+// 1. 启动时读回上次的选择。放在建窗口之前，两种生命周期都会走 didFinishLaunching
+PPAppearance.restore()
+
+// 2. 照常用库的 RootBuilder 建窗口 —— 外观会被自动套上，这里不用写任何额外代码
+let window = RootBuilder.makeWindow(windowScene: windowScene, // 或传统生命周期的重载
+                                    iPhoneRoot: { ... },
+                                    iPadOrMacRoot: { ... })
+
+// 3. 需要切换的地方直接赋值，立刻生效
+PPAppearance.mode = .dark
+```
+
+### API
+
+| 成员 | 说明 |
+|---|---|
+| `PPAppearance.mode` | 当前模式，可读可写。赋值立刻应用到所有窗口并广播通知 |
+| `PPAppearanceMode` | `.system` / `.light` / `.dark`；`displayName` 是可直接显示的默认文案 |
+| `PPAppearance.persistenceKey` | UserDefaults 键，默认 `"PPAppearanceMode"`；设成 `nil` 就关掉持久化 |
+| `PPAppearance.restore()` | 读回上次保存的值，没存过或值非法时保持当前值 |
+| `PPAppearance.reset()` | 清掉保存的值并回到跟随系统（给「恢复默认设置」用） |
+| `PPAppearance.apply(to:)` | 套到指定窗口。自己 new `UIWindow`（没用 `RootBuilder`）时调它 |
+| `PPAppearance.applyToAllWindows()` | 套到所有窗口。setter 会自动调，只有运行期新开的窗口才需要补 |
+| `Notification.Name.ppAppearanceDidChange` | 切换后广播，用来刷新不会自动变的东西 |
+
+### 原理与边界
+
+实现是在 `UIWindow` 上设 `overrideUserInterfaceStyle`，页面代码一行都不用改。
+选窗口而不是逐个 ViewController，是因为窗口是 trait 的源头 —— 覆盖一处就能覆盖整棵视图树，包括之后 push / present 出来的页面。
+
+| 行为 | 说明 |
+|---|---|
+| 已有的动态色 | 自动重新解析并重绘，刷新逻辑不用写 |
+| `CALayer.borderColor` / `shadowColor` | 是 CGColor，**不会自动变**，监听 `.ppAppearanceDidChange` 自己用 `resolvedColor(with:)` 重算 |
+| iOS 12 | **无效**。`UIUserInterfaceStyle` 是 iOS 13 的类型，页面保持浅色。想藏掉入口用 `if #available(iOS 13.0, *)` |
+| 系统设置 | 只覆盖 App 自己的外观，不影响系统，也不影响其他 App |
+| 多窗口 | 所有窗口一起覆盖；后面新开的窗口要补一次 `applyToAllWindows()` |
+
+### 自定义入口
+
+入口长什么样、放在哪里完全由宿主决定，库只认 `PPAppearance.mode`。
+仓库 Demo 做成了列表页导航栏上的「外观」按钮 + ActionSheet 三选（见 `ArticleListViewController`）。
+换成 SegmentedControl 或设置页开关同理：
+
+```swift
+@IBAction func styleChanged(_ sender: UISegmentedControl) {
+    // rawValue 顺序与分段顺序一致：0 跟随系统 / 1 浅色 / 2 深色
+    PPAppearance.mode = PPAppearanceMode(rawValue: sender.selectedSegmentIndex) ?? .system
+}
 
 ## 生命周期兼容（UIScene / AppDelegate）
 

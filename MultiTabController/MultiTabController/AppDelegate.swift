@@ -32,6 +32,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         //
         // 注意：这里不要碰 self.window —— Scene 生命周期下此刻场景还没建立，窗口必然是 nil。
 
+        // 读回用户上次手动选的外观（跟随系统 / 浅色 / 深色）。
+        // 这里只是把值恢复到 PPAppearance.mode 上，窗口还不存在；
+        // 真正套到窗口上是在 RootBuilder.makeWindow 里做的，所以两种生命周期都不用额外处理。
+        PPAppearance.restore()
+
         // 传统生命周期兜底：只有 App 没采用 UIScene 时才需要本类建窗口。
         // 判据直接用库里的 AppLifecycle（口径与 TN3187 一致：配了场景清单就是 Scene 模式）。
         if !AppLifecycle.usesSceneLifecycle {

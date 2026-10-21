@@ -40,6 +40,9 @@ public enum RootBuilder {
     ) -> UIWindow {
         // 挂在场景上的窗口：frame 由系统按场景大小安排好，不用也不该自己设。
         let window = UIWindow(windowScene: windowScene)
+        // 先套上宿主选定的外观模式，再装根控制器：这样视图第一次构建时拿到的就是正确的 trait，
+        // 不会先按系统外观画一帧、再闪一下变成手动指定的样式。
+        PPAppearance.apply(to: window)
         window.rootViewController = makeRoot(iPhoneRoot: iPhoneRoot, iPadOrMacRoot: iPadOrMacRoot)
         return window
     }
@@ -58,6 +61,9 @@ public enum RootBuilder {
         // UIScreen.main 从 iOS 26 起已废弃（官方建议从 view.window.windowScene.screen 取），
         // 但传统生命周期下压根没有场景可依，这里只能这么写；Scene 路线走不到这一支。
         let window = UIWindow(frame: UIScreen.main.bounds)
+        // 与上面那个重载同理：外观要在装根控制器之前套好。
+        // iOS 12 上这个方法内部会直接返回，不影响老系统的行为。
+        PPAppearance.apply(to: window)
         window.rootViewController = makeRoot(iPhoneRoot: iPhoneRoot, iPadOrMacRoot: iPadOrMacRoot)
         return window
     }

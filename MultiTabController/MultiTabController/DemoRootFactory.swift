@@ -55,11 +55,17 @@ enum DemoRootFactory {
             list.router = router
             return list
         }
+
         // 用 PPTabItem 传入图标，演示 TabBarBuilder 新开放的图标能力。
         let sidebar = TabBarBuilder.build(
             viewControllers: lists,
             items: categories.map { PPTabItem(title: $0.title, image: $0.image) }
         )
+
+        // 外观入口挂在外层导航栏上，不要再给每个列表包 UINavigationController ——
+        // SplitContainerViewController 内部已经用一个 leftNavigationController 包住了整个侧栏，
+        // 再包一层就会出现两条导航栏、两个标题叠在一起。
+        sidebar.navigationItem.rightBarButtonItem = lists[0].makeAppearanceBarButtonItem()
         let split = SplitContainerViewController(
             leftViewController: sidebar,
             router: router,

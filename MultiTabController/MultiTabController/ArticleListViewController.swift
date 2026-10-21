@@ -80,6 +80,53 @@ public class ArticleListViewController: UIViewController {
         view.backgroundColor = .pp_systemBackground
         setupTableView()
         setupTapGestures()
+        setupAppearanceButton()
+    }
+
+    // MARK: 外观开关（Demo 用）
+    // 演示"手动锁浅色 / 深色"的能力。库只提供 PPAppearance 这个开关，
+    // 入口长什么样、放在哪里，完全由宿主（也就是这里）自己决定。
+    private func setupAppearanceButton() {
+        navigationItem.rightBarButtonItem = makeAppearanceBarButtonItem()
+    }
+
+    /// 造一个「外观」导航栏按钮。
+    ///
+    /// 抽成方法是因为 iPad / Mac 上的侧栏不是直接显示本页面：侧栏外面套着
+    /// SplitContainerViewController 的导航控制器，按钮得挂到那一层去（见 DemoRootFactory）。
+    /// - Returns: iOS 12 上返回 nil —— 深色模式本身是 iOS 13 才有的，给了入口也没效果。
+    func makeAppearanceBarButtonItem() -> UIBarButtonItem? {
+        guard #available(iOS 13.0, *) else { return nil }
+        return UIBarButtonItem(
+            title: "外观",
+            style: .plain,
+            target: self,
+            action: #selector(showAppearancePicker(_:))
+        )
+    }
+
+    @objc private func showAppearancePicker(_ sender: UIBarButtonItem) {
+        guard #available(iOS 13.0, *) else { return }
+
+        let sheet = UIAlertController(
+            title: "外观",
+            message: "手动选择后不再跟随系统设置",
+            preferredStyle: .actionSheet
+        )
+
+        for mode in PPAppearanceMode.allCases {
+            // 当前正在用的那一项打个勾，用户一眼能看出现在是什么模式。
+            let title = (mode == PPAppearance.mode) ? "\(mode.displayName) ✓" : mode.displayName
+            // 赋值即生效：库内部会给所有窗口设 overrideUserInterfaceStyle，动态色自动重绘。
+            sheet.addAction(UIAlertAction(title: title, style: .default) { _ in
+                PPAppearance.mode = mode
+            })
+        }
+        sheet.addAction(UIAlertAction(title: "取消", style: .cancel))
+
+        // iPad / Mac 上 actionSheet 是 popover，必须给锚点，否则运行时会直接崩在这里。
+        sheet.popoverPresentationController?.barButtonItem = sender
+        present(sheet, animated: true)
     }
 
     private func setupTableView() {
