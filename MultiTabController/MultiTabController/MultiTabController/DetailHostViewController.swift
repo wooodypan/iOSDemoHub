@@ -133,6 +133,37 @@ public final class DetailHostViewController: UIViewController,
     /// 去重只按 `PPContentItem.id` 比较，所以请保证你的业务 id 在同一个宿主里唯一。
     public var deduplicateOpenedItems: Bool = true
 
+    // MARK: 冷启动恢复（单宿主覆盖）
+    //
+    // 下面三个属性默认都是 nil，意思是「不表态，跟随全局 PPTabRestoration」。
+    // 只有想让某个宿主单独开 / 单独关 / 单独用一份存档时才需要设置。
+    //
+    // 它们都只在宿主 view 第一次加载（viewDidLoad）时被读一次：
+    //   - 在这之前设置（init 之后、上屏之前）立即生效；
+    //   - 在这之后设置不会补做恢复，也不会改变保存用的键，
+    //     避免出现「恢复读 A 键、保存写 B 键」这种错位。
+
+    /// 本宿主是否在首次加载时恢复上次的 Tab。
+    /// - `nil`（默认）：跟随全局 `PPTabRestoration.isEnabled`
+    /// - `true` / `false`：只对当前宿主生效，覆盖全局
+    ///
+    /// 典型用法是辅助窗口不恢复：主窗口跟着全局走，次要窗口设成 `false`。
+    public var restoresTabsOnLaunch: Bool?
+
+    /// 本宿主专用的存档键。`nil`（默认）= 用全局 `PPTabRestoration.persistenceKey`。
+    ///
+    /// 多窗口 / 多个宿主同时存在时必须分开，否则两边会互相覆盖对方的快照。
+    /// 注意这里**不能**在 viewDidLoad 时自动按窗口 / 场景拼一个后缀：那一刻宿主还没进窗口，
+    /// `view.window` 是 nil。需要按场景区分的，请在 SceneDelegate 里拿到
+    /// `session.persistentIdentifier` 后，通过工厂闭包把键传进来。
+    public var tabRestorationKey: String?
+
+    /// 本宿主专用的内容解析器。`nil`（默认）= 用全局 `PPTabRestoration.contentResolver`。
+    ///
+    /// 给「一个 App 里有多套数据源 / 多个模块各自管理内容」的场景用；单数据源留 nil 即可。
+    /// 宿主会强持有这个闭包，捕获外部对象请用 weak。
+    public var tabRestorationResolver: ((String) -> PPContentItem?)?
+
     /// 选中 Tab 的底色（作用在单元格的 `contentView.backgroundColor` 上）。
     /// 默认值 `UIColor.pp_tabSelectedBackground` 是动态色：浅色下浅灰、深色下深灰，跟随系统外观自动变。
     ///
@@ -204,6 +235,24 @@ public final class DetailHostViewController: UIViewController,
     private var tabs: [DetailTabItem] = []
     private var selectedTabID: String?
 
+    // MARK: 冷启动恢复的内部状态（具体实现见文件后面的「私有：冷启动恢复」）
+
+    // 全局配置与本宿主覆盖项合并后的结果。nil = 本宿主既不恢复也不保存。
+    private var restorationConfig: ResolvedTabRestoration?
+    // 是否已经尝试过恢复。视图加载时无论开关开着还是关着都会置位：
+    // 这样之后再把全局开关打开，也不会突然往这个已经上屏的宿主里塞 Tab。
+    private var didAttemptTabRestoration = false
+    // 恢复过程中禁止写盘（原因见 restoreTabsIfNeeded 里的注释）。
+    private var isRestoringTabs = false
+    // 恢复后需要滚动一次到选中的 Tab；viewDidLoad 时宽度可能还是 0，所以推迟到布局完成再做。
+    private var needsScrollToRestoredSelection = false
+
+    // 一次求值的结果：键和解析器绑在一起存，保证「从哪把键读的，就写回哪把键」。
+    private struct ResolvedTabRestoration {
+        let persistenceKey: String
+        let contentResolver: (String) -> PPContentItem?
+    }
+
     // 高度约束，方便在没有 Tab 时把 Tab 条收起。
     private var collectionViewHeightConstraint: NSLayoutConstraint?
     private var separatorHeightConstraint: NSLayoutConstraint?
@@ -227,9 +276,13 @@ public final class DetailHostViewController: UIViewController,
         view.backgroundColor = .clear
         setupViews()
         refreshUI()
+        // 冷启动恢复：必须在这里，而且必须早于下面的 reloadData。
+        // 恢复是「一次性把 tabs 数组填好」，让本次 reloadData 把恢复结果当成集合视图的基线；
+        // 放到 reloadData 之后再恢复，就只能补一次批量 insert，正好撞上 appendTab 注释里写的那个异常。
+        restoreTabsIfNeeded()
         // Mac Catalyst 下装底层键盘监听，用来真正拦下 ⌘W（详见方法内注释）。
         installCatalystKeyInterceptorIfNeeded()
-        // 首次进入做一次全量同步（此时必无 Tab，代价为零）；
+        // 首次进入做一次全量同步；恢复出来的 Tab 会作为这次 reloadData 的基线。
         // 之后的增删改都走精细化的 insert/delete/reload item。
         collectionView.reloadData()
     }
@@ -254,6 +307,15 @@ public final class DetailHostViewController: UIViewController,
     public override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         becomeFirstResponder()
+    }
+
+    // 恢复出来的 Tab 要滚到可见区域，但 viewDidLoad 时 bounds 往往还是 0，
+    // 那一刻 scrollToItem 会算出错误的偏移。等这里拿到真实宽度后再滚，只做一次、不带动画。
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        guard needsScrollToRestoredSelection, view.bounds.width > 0 else { return }
+        needsScrollToRestoredSelection = false
+        scrollToSelectedItem(animated: false)
     }
 
     // 向系统声明本控制器支持的键盘快捷键列表。
@@ -412,6 +474,8 @@ public final class DetailHostViewController: UIViewController,
 
             // 预览槽位里的内容换了：通知外部同步左侧高亮。
             notifySelectionChanged()
+            // 预览 Tab 的 tab id 没变，但内容和选中项变了，快照要跟着更新。
+            persistTabsIfNeeded()
         } else {
             // 没有预览 Tab（当前都是正式 Tab）-> 新建一个预览 Tab。
             appendTab(for: item, isPreview: true)
@@ -484,6 +548,8 @@ public final class DetailHostViewController: UIViewController,
 
         // 用户点了另一个 Tab：通知外部同步左侧高亮。
         notifySelectionChanged()
+        // 选中项变了，记住它，下次启动才能停在同一页。
+        persistTabsIfNeeded()
     }
 
     public func collectionView(
@@ -533,6 +599,8 @@ public final class DetailHostViewController: UIViewController,
 
         // 去重命中、程序化切到某个已有 Tab：通知外部同步左侧高亮。
         notifySelectionChanged()
+        // 选中项变了，同步一次快照。
+        persistTabsIfNeeded()
     }
 
     private func load(item: PPContentItem, into index: Int) {
@@ -540,6 +608,165 @@ public final class DetailHostViewController: UIViewController,
         // 载入新内容：协议约定 configure 内部会把编辑状态复位为未编辑，
         // 宿主复用预览 Tab 时本就是预览态，无需在这里另外复位。
         tabs[index].controller.configure(with: item)
+    }
+
+    // MARK: - 私有：冷启动恢复
+    //
+    // 恢复的唯一正确姿势是「一次性构造完整的 tabs 数组」，而不是循环调用 appendTab：
+    //   - appendTab 每次都会 refreshUI + performBatchUpdates，N 个 Tab 就是 N 次布局和 N 次插入；
+    //   - 视图还没加载时 append 还会撞上 appendTab 开头注释里说的基线冲突。
+    // 所以这里直接把数组建好，最后交给 viewDidLoad 那一次 reloadData 统一刷新。
+
+    // 把「全局开关」和「本宿主的三个覆盖项」合并成一份配置，只在 viewDidLoad 求值一次。
+    //
+    // 为什么不在 init 或属性的 didSet 里求值？
+    //   init 时集成方还没拿到宿主，覆盖项一定都还是 nil；
+    //   didSet 会在「先设 key、再设 resolver、最后设开关」的中间态里求值，把半配置状态固化下来。
+    // 放在 viewDidLoad 一次性求值，拿到的是一份完整、稳定、可缓存的配置，恢复和保存共用同一份。
+    private func resolveTabRestorationConfig() -> ResolvedTabRestoration? {
+        // 三态合并：宿主说过就听宿主的，没表态才看全局。
+        let enabled = restoresTabsOnLaunch ?? PPTabRestoration.isEnabled
+        guard enabled else { return nil }
+
+        // 没有解析器就还原不出内容，直接按「没开启」处理。
+        // 这样连 UserDefaults 都不会读，符合「默认关闭时零副作用」的约定。
+        guard let resolver = tabRestorationResolver ?? PPTabRestoration.contentResolver else {
+            return nil
+        }
+
+        let key = tabRestorationKey ?? PPTabRestoration.persistenceKey
+        // 空键按未配置处理，避免所有宿主挤到同一个空键上互相覆盖。
+        guard !key.isEmpty else { return nil }
+
+        return ResolvedTabRestoration(persistenceKey: key, contentResolver: resolver)
+    }
+
+    private func restoreTabsIfNeeded() {
+        // viewDidLoad 只会走一次；这个标记是给「以后有人把调用挪到别处」留的保险。
+        guard !didAttemptTabRestoration else { return }
+        // 无论开关开着还是关着都置位：之后再把全局开关打开，也不会追溯这个宿主。
+        didAttemptTabRestoration = true
+
+        // 求值一次并缓存：保存侧也用这一份，保证读写用的是同一把键。
+        restorationConfig = resolveTabRestorationConfig()
+        guard let config = restorationConfig else { return }
+
+        // 视图加载前就已经有 Tab（正常路径不会发生）：以现场为准，不混入历史。
+        guard tabs.isEmpty else { return }
+
+        // 没存过 / 脏数据 / 版本不符都返回 nil：静默当作没有历史。
+        guard let snapshot = PPTabRestoration.loadSnapshot(forKey: config.persistenceKey),
+              !snapshot.tabs.isEmpty else { return }
+
+        // 恢复期间禁止写盘：此刻 tabs 还没替换完，写盘会把旧存档覆盖成空 / 半成品。
+        // （内容页的 configure 里如果上报了编辑态，会走 setPreview -> persistTabsIfNeeded。）
+        isRestoringTabs = true
+        defer { isRestoringTabs = false }
+
+        var restoredTabs: [DetailTabItem] = []
+        var restoredSelectedIndex: Int?
+        var didUsePreviewSlot = false
+        let limit = min(snapshot.tabs.count, PPTabRestoration.maxRestoredTabCount)
+
+        for savedIndex in 0..<limit {
+            let saved = snapshot.tabs[savedIndex]
+
+            // 有 id 的条目要现场反查内容；查不到说明文章下架 / id 规则变了，只跳过这一条。
+            // 没有 id 的是空 Tab（"New Tab"），不需要反查，照常建出来。
+            let item: PPContentItem?
+            if let itemID = saved.id {
+                guard let resolved = config.contentResolver(itemID) else { continue }
+                item = resolved
+            } else {
+                item = nil
+            }
+
+            let controller = contentViewControllerProvider()
+            // 注入上报通道，和 appendTab 保持一致。
+            controller.contentHost = self
+            // 空 Tab 不 configure —— 它本来就没有内容可显示，标题保持默认的 "New Tab"。
+            if let item = item {
+                controller.configure(with: item)
+            }
+
+            // 先建立父子关系保活；view 的挂载交给 refreshUI 统一处理。
+            addChild(controller)
+            controller.didMove(toParent: self)
+
+            // 正常最多只有一个预览 Tab；存档里若出现多个（脏数据 / 手工改过），只认第一个，
+            // 否则「预览槽位唯一」的约定会被破坏。
+            let isPreview = saved.isPreview && !didUsePreviewSlot
+            if isPreview { didUsePreviewSlot = true }
+
+            // 记下选中项在「恢复后的数组」里的位置：前面可能有条目被跳过，下标会错位。
+            if savedIndex == snapshot.selectedIndex {
+                restoredSelectedIndex = restoredTabs.count
+            }
+
+            restoredTabs.append(DetailTabItem(
+                id: UUID().uuidString,
+                item: item,
+                controller: controller,
+                isPreview: isPreview
+            ))
+        }
+
+        guard !restoredTabs.isEmpty else { return }
+
+        // 一次性替换数据源：不调 appendTab，避免 N 次 insert / N 次 layout。
+        tabs = restoredTabs
+
+        // 选中项兜底：存档里的下标可能因上面跳过失效内容而错位，越界就夹到合法范围。
+        let fallbackIndex = min(max(snapshot.selectedIndex, 0), restoredTabs.count - 1)
+        selectedTabID = restoredTabs[restoredSelectedIndex ?? fallbackIndex].id
+
+        // 让壳与内容视图进入「有 Tab」的状态（显示 Tab 条、挂上选中的内容页）。
+        refreshUI()
+
+        // 首次滚动推迟到布局完成；见 viewDidLayoutSubviews。
+        needsScrollToRestoredSelection = true
+
+        // 恢复出来的选中项也是「当前选中项」，要通知外部同步左侧高亮，不能漏。
+        notifySelectionChanged()
+
+        // 这里绝对不写盘：上面被 resolver 判为 nil 的条目还留在存档里，
+        // 此时保存会把它们永久删掉。等用户下一次真正操作 Tab 时再写。
+    }
+
+    // 把当前 Tab 状态写进存档。没开启 / 没配 resolver / 恢复中，都直接跳过。
+    private func persistTabsIfNeeded() {
+        // 恢复过程中不写盘（原因见 restoreTabsIfNeeded）。
+        guard !isRestoringTabs else { return }
+
+        // 只有「首次加载时确实决定要恢复」的宿主才保存：
+        // 没开启、没配 resolver、加载之后才改配置的宿主，一律不碰 UserDefaults。
+        guard didAttemptTabRestoration, let config = restorationConfig else { return }
+
+        var savedTabs: [PPTabRestorationSnapshot.Tab] = []
+        var selectedIndex = 0
+
+        for tab in tabs {
+            // 选中的这一份要先记下标，再 append —— 空 Tab 也存，所以下标始终对得上。
+            if tab.id == selectedTabID {
+                selectedIndex = savedTabs.count
+            }
+            // 空 Tab 也存（id 写 nil）：用户上次留着的空白工作区，恢复后应该还是空白。
+            savedTabs.append(PPTabRestorationSnapshot.Tab(id: tab.item?.id, isPreview: tab.isPreview))
+        }
+
+        // 一个 Tab 都没有（用户把标签页全关了）：删键，而不是写空数组 ——
+        // 删掉之后下次启动是干净的「没有历史」，语义比一个空快照更清楚。
+        guard !savedTabs.isEmpty else {
+            PPTabRestoration.removeSnapshot(forKey: config.persistenceKey)
+            return
+        }
+
+        let snapshot = PPTabRestorationSnapshot(
+            version: PPTabRestorationSnapshot.currentVersion,
+            tabs: savedTabs,
+            selectedIndex: selectedIndex
+        )
+        PPTabRestoration.saveSnapshot(snapshot, forKey: config.persistenceKey)
     }
 
     private func appendTab(for item: PPContentItem?, isPreview: Bool) {
@@ -582,6 +809,8 @@ public final class DetailHostViewController: UIViewController,
 
         // 新建 Tab 后它自动成为选中项：通知外部同步左侧高亮。
         notifySelectionChanged()
+        // 多了一个 Tab，而且它成了选中项：快照要立刻跟上。
+        persistTabsIfNeeded()
     }
 
     private func closeTab(withID id: String) {
@@ -607,6 +836,10 @@ public final class DetailHostViewController: UIViewController,
         // 关闭可能让选中项变成相邻 Tab，或变成“没有选中项”：通知外部同步左侧高亮。
         // （关的是未选中的 Tab 时，去重逻辑会发现选中项没变，不会重复回调。）
         notifySelectionChanged()
+
+        // Tab 少了一个（关的可能是选中项，也可能是别的）：快照要减掉这一条。
+        // 放在退出确认之前 —— 全部关光时快照应该已经被删掉，和当前状态一致。
+        persistTabsIfNeeded()
 
         // 新增：所有 Tab 都已关闭，且外部开启了退出确认 -> 弹出“是否退出 App”确认框。
         // 无论关闭途径（Command+W 快捷键、点 Tab 上的关闭按钮）都统一生效。
@@ -681,6 +914,8 @@ public final class DetailHostViewController: UIViewController,
         guard let index = tabs.firstIndex(where: { $0.controller === controller }) else { return }
         tabs[index].isPreview = value
         collectionView.reloadItems(at: [IndexPath(item: index, section: 0)])
+        // isPreview 是快照字段：内容页一被编辑，预览变正式，存档也要跟着改。
+        persistTabsIfNeeded()
     }
 
     // MARK: - 私有：Tab 条的精细化更新
@@ -707,6 +942,16 @@ public final class DetailHostViewController: UIViewController,
     // 滚动放在 performBatchUpdates 的 completion 里：此时布局已就绪，
     // 无需再 DispatchQueue.main.async 延后滚动。
     private func updateTabBar(reload: [IndexPath], insert: [IndexPath], delete: [IndexPath]) {
+        // 视图还没上屏（宿主刚 init 完就被预开了 Tab、或启动阶段恢复）时不做增量更新。
+        // 原因：这种情况下 collectionView 的条数会在布局时一次性同步成最新值，
+        // 紧接着再 insert / delete 就会被判成「更新前后条数对不上」，直接抛
+        // NSInternalInconsistencyException（Invalid batch updates）。
+        // 反正屏幕上看不到这一帧，全量刷新语义一样、代价还更小。
+        guard collectionView.window != nil, collectionView.bounds.width > 0 else {
+            collectionView.reloadData()
+            return
+        }
+
         // 关键：Tab 条可能刚从隐藏/高度 0 恢复（约束常量刚在 refreshUI 里改过，帧还没更新），
         // 必须先落一次布局拿到真实尺寸；否则 insert/delete 会在“高度 0 的旧 bounds”下执行：
         // flow layout 不会去问 sizeForItemAt，新 cell 宽高全是 0，且之后撑回 44 也不会自动纠正。

@@ -37,6 +37,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // 真正套到窗口上是在 RootBuilder.makeWindow 里做的，所以两种生命周期都不用额外处理。
         PPAppearance.restore()
 
+        // 冷启动恢复上次的 Tab（库的这个能力默认关闭；下面这一行就是外部接入的全部代码）。
+        //
+        // 时序是安全的：本方法一定早于任何 DetailHostViewController 的 viewDidLoad。
+        //   - Scene 生命周期：窗口在 SceneDelegate.scene(_:willConnectTo:) 才建；
+        //   - 传统生命周期：窗口在本方法下面几行才建。
+        // resolver 必须是同步、O(1) 的本地查表 —— 它在启动阶段被逐条调用。
+        PPTabRestoration.enable(resolver: { DataStore.item(withID: $0) })
+
         // 传统生命周期兜底：只有 App 没采用 UIScene 时才需要本类建窗口。
         // 判据直接用库里的 AppLifecycle（口径与 TN3187 一致：配了场景清单就是 Scene 模式）。
         if !AppLifecycle.usesSceneLifecycle {
