@@ -46,6 +46,16 @@ extension UIColor {
         )
     }
 
+    /// Tab 处于编辑态（有未保存的修改）时，替代关闭按钮 x 的那个小圆点颜色。
+    /// 浅色下取中灰：压在浅灰的 Tab 底色上既不刺眼、又能一眼看见；
+    /// 深色下换成半透明白，纯黑背景上才浮得出来。
+    static var pp_editingIndicator: UIColor {
+        return pp_adaptive(
+            light: UIColor(white: 0.62, alpha: 1.0),
+            dark: UIColor(white: 1.0, alpha: 0.55)
+        )
+    }
+
     /// 左侧列表选中行的底色（模仿 VS Code 资源管理器里被选中的文件）。
     /// 浅色下是中性灰；深色下换成比纯黑背景亮一档的灰。
     static var pp_selectedRowBackground: UIColor {

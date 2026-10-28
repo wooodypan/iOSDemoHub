@@ -25,6 +25,10 @@ final class DetailViewController: UIViewController, PPContentDisplaying {
     // 这是"某个 UIViewController 的某个 Bool 值属性"，它变化后当前 Tab 就不再被预览复用。
     var isEdited: Bool = false
 
+    // 另一个 Bool：当前页有没有未保存的修改。
+    // 它和上面的 isEdited 是两回事 —— 这个只决定 Tab 上是显示灰色小圆点还是关闭按钮 x。
+    private var hasUnsavedChanges = false
+
     private var currentItem: PPContentItem?
 
     private let scrollView = UIScrollView()
@@ -108,16 +112,20 @@ final class DetailViewController: UIViewController, PPContentDisplaying {
         bodyLabel.translatesAutoresizingMaskIntoConstraints = false
 
         // 编辑状态示例说明
-        noteLabel.text = "点击下方按钮切换当前 Tab 的“编辑状态”：标记为已编辑后，再点左侧文章会新建 Tab 而非覆盖"
+        noteLabel.text = "「标记已编辑」= 把当前 Tab 固定为正式 Tab（再点左侧文章不覆盖）；「未保存点」= 让 Tab 上的关闭按钮 x 变成灰色小圆点，Mac 上鼠标悬浮时再换回 x"
         noteLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
         noteLabel.textColor = .pp_secondaryLabel
         noteLabel.numberOfLines = 0
         noteLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        // 两个示例按钮：点击“标记为已编辑” -> isEdited = true；点击“清除编辑标记” -> isEdited = false
-        let markEditedButton = makeActionButton(title: "标记为已编辑", systemImage: "checkmark.circle", action: #selector(markAsEdited))
-        let clearEditedButton = makeActionButton(title: "清除编辑标记", systemImage: "xmark.circle", action: #selector(clearEdit))
-        editStackView = UIStackView(arrangedSubviews: [markEditedButton, clearEditedButton])
+        // 三个示例按钮：
+        //   标记已编辑 -> isEdited = true（固定为正式 Tab）
+        //   清除标记   -> isEdited = false（回到可被预览复用）
+        //   未保存点   -> hasUnsavedChanges 取反，并上报宿主（Tab 上灰点 / x 互相切换）
+        let markEditedButton = makeActionButton(title: "标记已编辑", systemImage: "checkmark.circle", action: #selector(markAsEdited))
+        let clearEditedButton = makeActionButton(title: "清除标记", systemImage: "xmark.circle", action: #selector(clearEdit))
+        let unsavedButton = makeActionButton(title: "未保存点", systemImage: "circle.fill", action: #selector(toggleUnsavedChanges))
+        editStackView = UIStackView(arrangedSubviews: [markEditedButton, clearEditedButton, unsavedButton])
         editStackView.axis = .horizontal
         editStackView.spacing = 12
         editStackView.distribution = .fillEqually
@@ -216,6 +224,12 @@ final class DetailViewController: UIViewController, PPContentDisplaying {
         contentHost?.contentViewController(self, didChangeEditedState: false)
     }
 
+    // 切换「有没有未保存的修改」：上报宿主，Tab 上的关闭按钮 x 和灰色小圆点随之互换。
+    @objc private func toggleUnsavedChanges() {
+        hasUnsavedChanges.toggle()
+        contentHost?.contentViewController(self, didChangeEditingState: hasUnsavedChanges)
+    }
+
     // MARK: - PPContentDisplaying：配置
 
     // 用一个内容项配置本页（数据先行，UI 在视图就绪后渲染，避免提前访问控件闪退）。
@@ -224,6 +238,7 @@ final class DetailViewController: UIViewController, PPContentDisplaying {
 
         // 切换内容时，把编辑状态重置为 false（不触发上报：宿主复用预览 Tab 时本就是预览态）。
         isEdited = false
+        hasUnsavedChanges = false
 
         // 把数据渲染到界面。关键点：本页作为子控制器创建时，可能还没触发 viewDidLoad
         // （视图尚未加载），此时直接访问 titleLabel / actionStackView 等控件会闪退

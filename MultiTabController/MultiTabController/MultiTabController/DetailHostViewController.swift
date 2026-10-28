@@ -9,6 +9,9 @@ private struct DetailTabItem {
     var item: PPContentItem?
     let controller: PPContentDisplaying
     var isPreview: Bool
+    // 编辑态：true 表示这个 Tab 里有未保存的修改，标题右侧显示灰色小圆点（而不是关闭按钮 x）。
+    // 只影响视觉，不参与冷启动恢复 —— 未保存的内容本来也没法还原。
+    var isEditing: Bool
 }
 
 // MARK: - Tab 条的尺寸常量
@@ -183,6 +186,14 @@ public final class DetailHostViewController: UIViewController,
     /// 未选中 Tab 的底色。默认 `.clear` —— 也就是不涂色，
     /// 直接露出 Tab 条（collectionView）自身的背景色。赋值后的行为同上。
     public var tabUnselectedBackgroundColor: UIColor = .clear {
+        didSet {
+            applyTabBarColors()
+        }
+    }
+
+    /// Tab 处于编辑态时，替代关闭按钮 x 的那个灰色小圆点的颜色。
+    /// 默认 `UIColor.pp_editingIndicator`（浅色中灰 / 深色半透明白），赋值后已经上屏的 Tab 立刻改色。
+    public var tabEditingIndicatorColor: UIColor = .pp_editingIndicator {
         didSet {
             applyTabBarColors()
         }
@@ -417,7 +428,9 @@ public final class DetailHostViewController: UIViewController,
     // 只对 Mac Catalyst 生效；iOS/iPadOS 响应链上没有这个 AppKit selector，保持默认即可。
     public override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         #if targetEnvironment(macCatalyst)
-        if action == Selector(("performClose:")) {
+        // performClose: 是 AppKit 的私有选择器，Swift 里没有对应声明，只能按字符串构造。
+        // 用 NSSelectorFromString 而不是 Selector(("..."))，后者会触发「use #selector instead」告警。
+        if action == NSSelectorFromString("performClose:") {
             return false
         }
         #endif
@@ -506,6 +519,98 @@ public final class DetailHostViewController: UIViewController,
         }
     }
 
+    // MARK: - Tab 编辑状态（未保存修改的灰点标识）
+    //
+    // 语义对齐 Windows 11 记事本 / VS Code：
+    //   编辑态     -> 关闭按钮的位置显示一个灰色小圆点，提示「这里有没保存的修改」；
+    //   非编辑态   -> 不显示圆点，回到普通的关闭按钮 x。
+    // Mac Catalyst 上有鼠标悬浮：指针压到 Tab 上时，灰点会换回可点击的 x（悬浮即可关闭）；
+    // 触摸平台没有悬浮，灰点本身就能点 —— 点它就是关闭这个 Tab。
+    //
+    // 这个状态只影响视觉，不改变「预览 / 正式 Tab」「选中项」等任何既有语义，
+    // 也不会写进冷启动快照（未保存的内容本来就没法还原）。
+
+    /// 关闭 Tab 前的确认钩子。返回 `false` 取消这次关闭。默认 `nil` = 一律直接关。
+    ///
+    /// 用来给「有未保存修改的 Tab」挡一层确认框，避免点灰点（或 ⌘W）就把内容丢掉。
+    /// 这个钩子是同步返回的，正确姿势是「先拦下、弹框、用户确认后再关」：
+    /// ```swift
+    /// host.shouldCloseTab = { [weak host] item, isEditing in
+    ///     guard isEditing, let item = item else { return true }
+    ///     // 返回 false 拦住这次关闭，然后弹确认框。
+    ///     let alert = UIAlertController(title: "还有未保存的修改", message: nil, preferredStyle: .alert)
+    ///     alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+    ///     alert.addAction(UIAlertAction(title: "放弃修改", style: .destructive) { _ in
+    ///         // 先把编辑态清掉（否则钩子会再拦一次），再关。
+    ///         host?.setEditing(false, forItemID: item.id)
+    ///         host?.closeTab(forItemID: item.id)
+    ///     })
+    ///     // …present(alert)
+    ///     return false
+    /// }
+    /// ```
+    /// - Parameters:
+    ///   - item: 该 Tab 承载的内容；空 Tab（"New Tab"）为 `nil`。
+    ///   - isEditing: 该 Tab 当前是否处于编辑态。
+    public var shouldCloseTab: ((_ item: PPContentItem?, _ isEditing: Bool) -> Bool)?
+
+    /// 设置某个内容的 Tab 是否处于编辑态（`true` = 有未保存的修改）。
+    ///
+    /// 只刷新这一个单元格，不动选中项、不重排 Tab 条。找不到对应 Tab（内容已关闭）时什么都不做。
+    /// - Parameters:
+    ///   - isEditing: 是否编辑中。
+    ///   - itemID: 内容的 `PPContentItem.id`。
+    public func setEditing(_ isEditing: Bool, forItemID itemID: String) {
+        guard let index = tabs.firstIndex(where: { $0.item?.id == itemID }) else { return }
+        applyEditingState(isEditing, at: index)
+    }
+
+    /// 设置某个内容页所在的 Tab 是否处于编辑态。
+    ///
+    /// 供内容页自报（`contentHost` 的 `didChangeEditingState` 最终也走这里）；
+    /// 集成方自己拿着内容页实例时也可以直接调。
+    public func setEditing(_ isEditing: Bool, forContentViewController controller: UIViewController) {
+        guard let index = tabs.firstIndex(where: { $0.controller === controller }) else { return }
+        applyEditingState(isEditing, at: index)
+    }
+
+    /// 读某个内容当前是否处于编辑态。内容没开成 Tab 时返回 `false`。
+    public func isEditing(forItemID itemID: String) -> Bool {
+        tabs.first(where: { $0.item?.id == itemID })?.isEditing ?? false
+    }
+
+    /// 把当前所有处于编辑态的 Tab 一次性复位（「全部保存」场景）。
+    public func clearAllEditingStates() {
+        let indexPaths = tabs.indices.filter { tabs[$0].isEditing }.map { IndexPath(item: $0, section: 0) }
+        guard !indexPaths.isEmpty else { return }
+        for index in tabs.indices { tabs[index].isEditing = false }
+        reloadTabCells(at: indexPaths)
+    }
+
+    // 把编辑态落到模型上，并只重刷这一个单元格。
+    private func applyEditingState(_ isEditing: Bool, at index: Int) {
+        // 状态没变就不刷：内容页可能每次输入都上报一次，避免无谓的重绘。
+        guard tabs.indices.contains(index), tabs[index].isEditing != isEditing else { return }
+        tabs[index].isEditing = isEditing
+        reloadTabCells(at: [IndexPath(item: index, section: 0)])
+    }
+
+    // 单元格级重刷的统一出口，带「视图还没上屏」的保护（同 updateTabBar 里那段注释）。
+    private func reloadTabCells(at indexPaths: [IndexPath]) {
+        guard collectionView.window != nil, collectionView.bounds.width > 0 else {
+            collectionView.reloadData()
+            return
+        }
+        collectionView.reloadItems(at: indexPaths)
+    }
+
+    /// 关闭承载指定内容的 Tab（按 `PPContentItem.id` 定位）。
+    /// 内容没开成 Tab 时什么都不做。和点关闭按钮、按 ⌘W 一样会先过 `shouldCloseTab` 钩子。
+    public func closeTab(forItemID itemID: String) {
+        guard let tab = tabs.first(where: { $0.item?.id == itemID }) else { return }
+        closeTab(withID: tab.id)
+    }
+
     // MARK: - UICollectionView 数据源 / 代理
 
     public func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
@@ -525,8 +630,10 @@ public final class DetailHostViewController: UIViewController,
             title: tab.item?.title ?? "New Tab",
             selected: tab.id == selectedTabID,
             isPreview: tab.isPreview,
+            isEditing: tab.isEditing,
             selectedBackgroundColor: tabSelectedBackgroundColor,
-            unselectedBackgroundColor: tabUnselectedBackgroundColor
+            unselectedBackgroundColor: tabUnselectedBackgroundColor,
+            editingIndicatorColor: tabEditingIndicatorColor
         )
         cell.onClose = { [weak self] in
             self?.closeTab(withID: tab.id)
@@ -605,6 +712,9 @@ public final class DetailHostViewController: UIViewController,
 
     private func load(item: PPContentItem, into index: Int) {
         tabs[index].item = item
+        // 换内容 = 换了一份全新的（未修改的）内容，编辑态必须跟着复位，
+        // 否则上一份内容留下的灰点会挂在新内容上（预览槽位复用最容易出现）。
+        tabs[index].isEditing = false
         // 载入新内容：协议约定 configure 内部会把编辑状态复位为未编辑，
         // 宿主复用预览 Tab 时本就是预览态，无需在这里另外复位。
         tabs[index].controller.configure(with: item)
@@ -707,7 +817,8 @@ public final class DetailHostViewController: UIViewController,
                 id: UUID().uuidString,
                 item: item,
                 controller: controller,
-                isPreview: isPreview
+                isPreview: isPreview,
+                isEditing: false
             ))
         }
 
@@ -796,7 +907,7 @@ public final class DetailHostViewController: UIViewController,
         addChild(controller)
         controller.didMove(toParent: self)
 
-        tabs.append(DetailTabItem(id: tabID, item: item, controller: controller, isPreview: isPreview))
+        tabs.append(DetailTabItem(id: tabID, item: item, controller: controller, isPreview: isPreview, isEditing: false))
         selectedTabID = tabID
         refreshUI()
 
@@ -815,6 +926,13 @@ public final class DetailHostViewController: UIViewController,
 
     private func closeTab(withID id: String) {
         guard let index = tabs.firstIndex(where: { $0.id == id }) else { return }
+
+        // 关闭前的确认钩子：有未保存修改时，集成方可以在这里拦一次（返回 false 取消本次关闭）。
+        // 放在最前面：拦下来就什么都不做，Tab 数组、选中项、快照都不动。
+        if let shouldCloseTab = shouldCloseTab,
+           !shouldCloseTab(tabs[index].item, tabs[index].isEditing) {
+            return
+        }
 
         let wasSelected = selectedTabID == id
         let tab = tabs.remove(at: index)
@@ -926,7 +1044,7 @@ public final class DetailHostViewController: UIViewController,
         return IndexPath(item: index, section: 0)
     }
 
-    // 两个 Tab 底色（tabSelectedBackgroundColor / tabUnselectedBackgroundColor）改动后调用：
+    // 三个 Tab 外观色（选中底色 / 未选中底色 / 编辑态灰点色）改动后调用：
     // 把已有 Tab 的单元格重刷一遍，颜色立刻生效。
     // 只 reload 单元格、不做 reloadData —— 免得整条 Tab 条重建重排。
     private func applyTabBarColors() {
@@ -1110,13 +1228,26 @@ extension DetailHostViewController: PPContentHosting {
         // 复用统一的 mode 分发：.newWindow 由 open(_:mode:) 兜底交给 WindowManager。
         open(item, mode: mode)
     }
+
+    // 内容页上报「有没有未保存的修改」：决定 Tab 上是显示灰点还是关闭按钮 x。
+    // 和 didChangeEditedState 是两回事：那个管预览 Tab 要不要固定，这个只管视觉标识。
+    public func contentViewController(_ contentViewController: UIViewController,
+                                      didChangeEditingState isEditing: Bool) {
+        setEditing(isEditing, forContentViewController: contentViewController)
+    }
 }
 
 // MARK: - DetailTabCell
-// 模仿 NewsSplitDemo 的 DetailTabCell：一个 tab 标题 + 关闭按钮。
+// 模仿 NewsSplitDemo 的 DetailTabCell：一个 tab 标题 + 关闭按钮（或编辑态的灰色小圆点）。
 // 预览 Tab 用斜体强调“可复用”，正式 Tab 用正常字体。
-private final class DetailTabCell: UICollectionViewCell {
+//
+// 不写 private 是为了让单测能直接 new 一个出来验「灰点 / x 的显隐规则」
+// （模拟器里没法注入鼠标悬浮，Catalyst 那条路径只能靠代码审查）。
+final class DetailTabCell: UICollectionViewCell {
     static let reuseIdentifier = "DetailTabCell"
+
+    // 编辑态小圆点的直径：比旁边的 x 小一圈，像 Windows 11 记事本那样只做个「有改动」的提示。
+    private static let editingDotDiameter: CGFloat = 8
 
     private let titleLabel = UILabel()
 
@@ -1126,6 +1257,10 @@ private final class DetailTabCell: UICollectionViewCell {
     // .custom 按钮没有这层系统外观，整个 Tab 的底色变化完全由我们自己说了算（标题颜色本来就已手动指定，不受影响）。
     private let closeButton = UIButton(type: .custom)
 
+    // 编辑态标识：一个小圆点，占的正是关闭按钮的位置。
+    // 用 UIView 画而不是给按钮换个 "●" 字符：字符的字体度量各家不同，圆点容易偏上偏下、大小也难对齐。
+    private let editingDotView = UIView()
+
     var onClose: (() -> Void)?
 
     // 鼠标悬浮在本 Tab 上时，整个 Tab 要变的底色（= 宿主上的 tabSelectedBackgroundColor），
@@ -1134,6 +1269,21 @@ private final class DetailTabCell: UICollectionViewCell {
 
     // 没被悬浮时本 Tab 原本的底色（选中 / 未选中不一样），鼠标离开本 Tab 后要还原回它。
     private var normalBackgroundColor: UIColor = .clear
+
+    // 当前 Tab 是否处于编辑态（有未保存修改）：决定「灰点」还是「x」。
+    private var isEditing = false
+
+    // 指针是否悬浮在本单元格上。触摸平台永远是 false，只有 Catalyst 会真的变 true。
+    private var isHovering = false
+
+    // MARK: 给单测看的两个只读状态
+    // 不对外公开：外部只认宿主上的 setEditing / isEditing，不需要知道单元格里怎么画。
+
+    // 灰点这一刻是否露着。
+    var isEditingIndicatorVisible: Bool { !editingDotView.isHidden }
+
+    // 关闭按钮的 x 这一刻是否露着（x 的显隐靠标题色控制，见 applyGlyphVisibility）。
+    var isCloseGlyphVisible: Bool { closeButton.titleColor(for: .normal) != .clear }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1165,6 +1315,15 @@ private final class DetailTabCell: UICollectionViewCell {
         closeButton.setTitleColor(.pp_secondaryLabel, for: .normal)
         closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        // x 现在有两种含义（普通关闭 / 编辑态下悬浮才出现），给 VoiceOver 一个稳定说法。
+        closeButton.accessibilityLabel = "关闭标签页"
+
+        editingDotView.translatesAutoresizingMaskIntoConstraints = false
+        // 默认色和宿主上的 tabEditingIndicatorColor 默认值一致，configure 时会按外部配置覆盖。
+        editingDotView.backgroundColor = .pp_editingIndicator
+        editingDotView.layer.cornerRadius = Self.editingDotDiameter / 2
+        // 灰点会盖在按钮上面，必须让它不吃事件：点击要落到下面的按钮上（点灰点也能关 Tab）。
+        editingDotView.isUserInteractionEnabled = false
 
         #if targetEnvironment(macCatalyst)
         // Mac 上是用鼠标操作的：默认先把关闭按钮藏起来、底色用「未悬浮」的那份，
@@ -1178,6 +1337,7 @@ private final class DetailTabCell: UICollectionViewCell {
 
         contentView.addSubview(titleLabel)
         contentView.addSubview(closeButton)
+        contentView.addSubview(editingDotView)
 
         NSLayoutConstraint.activate([
             titleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 10),
@@ -1187,25 +1347,33 @@ private final class DetailTabCell: UICollectionViewCell {
             closeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -8),
             closeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 18),
-            closeButton.heightAnchor.constraint(equalToConstant: 18)
+            closeButton.heightAnchor.constraint(equalToConstant: 18),
+
+            // 灰点就摆在 x 的正中间：两者占同一个位置，同一时刻只会露出一个。
+            editingDotView.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
+            editingDotView.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
+            editingDotView.widthAnchor.constraint(equalToConstant: Self.editingDotDiameter),
+            editingDotView.heightAnchor.constraint(equalToConstant: Self.editingDotDiameter)
         ])
     }
 
     // 单元格会被复用：上一次悬浮留下的“按钮已显示 / 底色已点亮”状态必须清掉，
     // 否则快速滚动时会闪出带着 x 或带着亮底色的错误帧（复用时指针通常不会再触发一次 .ended）。
+    // 编辑态不用在这里清：紧跟其后的 configure 会按新数据重新赋一遍。
     override func prepareForReuse() {
         super.prepareForReuse()
-        #if targetEnvironment(macCatalyst)
-        resetHoverAppearance()
-        #endif
+        isHovering = false
+        contentView.backgroundColor = normalBackgroundColor
+        applyGlyphVisibility()
     }
 
     #if targetEnvironment(macCatalyst)
 
     // 把单元格恢复成“没被悬浮”的样子：藏起关闭按钮 + 把 Tab 底色还原回原本的色。
     private func resetHoverAppearance() {
-        closeButton.isHidden = true
+        isHovering = false
         contentView.backgroundColor = normalBackgroundColor
+        applyGlyphVisibility()
     }
 
     // 鼠标在本单元格上进出 / 移动时回调。
@@ -1213,10 +1381,11 @@ private final class DetailTabCell: UICollectionViewCell {
     @objc private func handleCellHover(_ gesture: UIHoverGestureRecognizer) {
         switch gesture.state {
         case .began, .changed:
-            // 指针进了这个 Tab：露出关闭按钮，同时把整个 Tab 的底色换成「选中 Tab 的底色」，
-            // 效果就是鼠标划过的 Tab 会亮一下（对齐网页里的 CSS hover）。
-            closeButton.isHidden = false
+            // 指针进了这个 Tab：露出关闭按钮（编辑态下就是「灰点换回 x」），
+            // 同时把整个 Tab 的底色换成「选中 Tab 的底色」，效果就是鼠标划过的 Tab 会亮一下（对齐网页里的 CSS hover）。
+            isHovering = true
             contentView.backgroundColor = hoverBackgroundColor
+            applyGlyphVisibility()
 
         case .ended, .cancelled:
             // 指针离开单元格；cancelled 是指针被系统收走（例如切到别的窗口），同样按离开处理。
@@ -1229,6 +1398,28 @@ private final class DetailTabCell: UICollectionViewCell {
 
     #endif
 
+    // 决定这一刻露出「x」还是「灰点」。规则：
+    //   编辑态：默认露灰点；有悬浮（Catalyst）时把灰点换回可点击的 x —— 这是 Windows 11 记事本的行为。
+    //   非编辑态：触摸平台一直露 x；Catalyst 只在悬浮时露 x（保持原有的 CSS hover 效果）。
+    private func applyGlyphVisibility() {
+        let showsCloseButton: Bool
+        if isEditing {
+            // 编辑态：只有悬浮时才把 x 换出来。触摸平台没有悬浮（isHovering 恒为 false），于是一直显示灰点。
+            showsCloseButton = isHovering
+        } else {
+            #if targetEnvironment(macCatalyst)
+            showsCloseButton = isHovering
+            #else
+            showsCloseButton = true
+            #endif
+        }
+
+        // 用标题颜色控制 x 的显隐，而不是 isHidden：
+        // isHidden 的按钮收不到点击，而编辑态下「点灰点」本身就该能关闭这个 Tab。
+        closeButton.setTitleColor(showsCloseButton ? .pp_secondaryLabel : .clear, for: .normal)
+        editingDotView.isHidden = !(isEditing && !showsCloseButton)
+    }
+
     // 底色不再写死在单元格里：由宿主把两个公开变量传进来，
     // 集成方改宿主上的 tabSelectedBackgroundColor / tabUnselectedBackgroundColor 就能换肤。
     // 单元格会被复用，所以每次配置都要重新赋一次色，不能只在 init 里设。
@@ -1236,8 +1427,10 @@ private final class DetailTabCell: UICollectionViewCell {
         title: String,
         selected: Bool,
         isPreview: Bool,
+        isEditing: Bool,
         selectedBackgroundColor: UIColor,
-        unselectedBackgroundColor: UIColor
+        unselectedBackgroundColor: UIColor,
+        editingIndicatorColor: UIColor
     ) {
         titleLabel.text = title
         // 先记住「非悬浮时本来该是什么色」，再铺上去；鼠标离开本 Tab 时要以它为基准还原。
@@ -1249,6 +1442,11 @@ private final class DetailTabCell: UICollectionViewCell {
         titleLabel.font = isPreview
             ? UIFont.italicSystemFont(ofSize: 14)
             : UIFont.systemFont(ofSize: 14, weight: .semibold)
+
+        // 编辑态：灰点的颜色和显隐都在这里定下来（单元格复用，不能只在 init 里设一次）。
+        self.isEditing = isEditing
+        editingDotView.backgroundColor = editingIndicatorColor
+        applyGlyphVisibility()
     }
 
     @objc private func closeTapped() {

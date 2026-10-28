@@ -16,12 +16,14 @@
 - **DetailHostViewController**：右侧多 Tab 宿主，承载 VS Code 预览/正式语义
 - **按内容 ID 去重**：`DetailHostViewController.deduplicateOpenedItems`（默认 `true`）。打开一个**已经打开过**的内容时不再新建 Tab，而是直接定位到那个 Tab；置 `false` 则恢复原语义（同一个内容可以开成多个 Tab）。比较依据是 `PPContentItem.id`，所以请保证业务 id 在同一个宿主里唯一；没有内容的空 Tab 不参与去重
 - **Tab 条外观可定制**：Tab 单元格只圆**上面两个角**、底边与 Tab 条底边对齐、顶部留 5pt 间距（像浏览器标签页一样「从底边长出来」）；选中 / 未选中底色由 `DetailHostViewController.tabSelectedBackgroundColor` / `.tabUnselectedBackgroundColor` 两个公开变量控制，赋值即生效；Mac Catalyst 下关闭按钮（x）默认隐藏、鼠标悬浮到 Tab 上才出现，同时该 Tab 底色点亮成选中色。详见下文「[定制 Tab 条外观](#定制-tab-条外观)」
+- **Tab 编辑状态（未保存修改的灰点）**：把 Tab 标成「编辑中」后，关闭按钮 x 会换成灰色小圆点（Windows 11 记事本那种未保存标识）；Mac Catalyst 下鼠标悬浮时灰点再换回可点击的 x。状态可由内容页通过 `contentHost` 自报，也可由集成方按内容 id 设置。详见下文「[Tab 编辑状态](#tab-编辑状态未保存修改的灰点)」
 - **键盘快捷键**：iPad / Mac Catalyst 下按 `Command+W` 关闭当前选中的 Tab；所有 Tab 都关闭后可按配置弹出「是否退出 App」确认框，弹框开关为 `DetailHostViewController.showExitPromptWhenAllTabsClosed`（默认开启），退出动作可用 `exitAction` 自定义
   - **Mac Catalyst 下真正生效的是底层事件监听**：⌘W 是系统菜单 “Close Window” 的*按键等价（key equivalent）*，由 AppKit 在 `NSWindow` 上执行 `performClose:`，优先级高于 `UIKeyCommand`，所以只加 `keyCommands` / 只删菜单项都拦不住。库内新增 `CatalystKeyInterceptor`，用 `NSEvent` 本地事件监听在按键等价处理之前把 ⌘W 截下
   - iPad 仍走 `UIKeyCommand`；`buildMenu` 移除 `.close` 菜单项 + `canPerformAction` 拦截 `performClose:` 作为 UIKit 层的补充
   - 若 App 使用多窗口（多个 `UIWindowScene`），建议同时在 `AppDelegate` 中 `override buildMenu(with:)` 移除 `.close` 菜单（主菜单是全局单例）
 - **DeviceHelper / WindowManager**：设备判断与多窗口（新窗口）能力
 - **PPAppearance**：App 内手动切换浅色 / 深色，不跟系统。`PPAppearance.mode = .dark` 一行生效，可选持久化记忆；默认仍是跟随系统，iOS 12 上自动无效。详见下文「[App 内手动切换浅色 / 深色](#app-内手动切换浅色--深色)」
+- **冷启动恢复上次的 Tab**：`PPTabRestoration.enable { ... }` 一行接入，**默认关闭**（不打开时零副作用）。全局开关 + 单宿主覆盖，多窗口可各存一份；恢复 Tab 顺序、选中项、预览标记与空 Tab。详见下文「[冷启动恢复上次的 Tab](#冷启动恢复上次的-tab)」
 - **同时兼容两套生命周期**：UIScene 生命周期（iOS 27 SDK 起 Apple 强制要求，见 [TN3187](https://developer.apple.com/documentation/Technotes/tn3187-Migrating-to-the-UIKit-scene-based-life-cycle)）与传统 AppDelegate 生命周期，见下文「[生命周期兼容](#生命周期兼容uiscene--appdelegate)」
 
 > 示例 / Demo：`ArticleListViewController.swift`、`DataStore.swift`、`AppDelegate.swift` 位于宿主层（与 `AppDelegate` 平级），**不随 pod / SPM 发布**。它们是仓库自带的完整接线示例；集成时请用你自己的列表控制器，只需让它持有 `PPContentRouting` 并产出 `PPContentItem` 即可。
@@ -161,6 +163,92 @@ host.tabUnselectedBackgroundColor = UIColor(white: 0.85, alpha: 1)
 > 只有颜色是开放项：Tab 条高度（44pt）、顶部间距（5pt）、左右内边距（5pt）与圆角半径（8pt）目前是库内的固定值，
 > 集中在 `DetailTabBarMetrics` 里，暂时不对外暴露。
 
+## Tab 编辑状态（未保存修改的灰点）
+
+Tab 可以标成「编辑中」：关闭按钮的位置改成一个灰色小圆点，提示这里有没保存的修改 —— 抄的是 Windows 11 记事本的行为。
+
+| 状态 | 触摸平台（iPhone / iPad） | Mac Catalyst |
+|---|---|---|
+| 非编辑态 | 一直显示关闭按钮 `x` | 平时不显示，指针悬浮到该 Tab 上才显示 `x`（原有行为） |
+| 编辑态 | 只显示灰色小圆点；**点圆点即关闭该 Tab** | 平时显示灰点；指针悬浮时灰点换回可点击的 `x`，同时 Tab 底色点亮 |
+
+灰点的直径固定 8pt，正好落在 `x` 的位置上，两者同一时刻只露一个。状态只影响视觉，不改变「预览 / 正式 Tab」「选中项」等任何既有语义。
+
+### API
+
+| 成员 | 说明 |
+|---|---|
+| `setEditing(_:forItemID:)` | 按内容 id 设置 / 取消编辑态，只重刷那一个单元格 |
+| `setEditing(_:forContentViewController:)` | 按内容页实例设置。内容页自报走的也是这里 |
+| `isEditing(forItemID:)` | 读某个内容当前是否编辑态 |
+| `clearAllEditingStates()` | 一次性复位所有编辑态（「全部保存」场景） |
+| `closeTab(forItemID:)` | 按内容 id 关闭 Tab。库唯一对外暴露的关闭入口 |
+| `shouldCloseTab` | 关闭前的确认钩子，返回 `false` 取消这次关闭（给未保存修改挡一层确认框） |
+| `tabEditingIndicatorColor` | 灰点颜色，默认 `UIColor.pp_editingIndicator`（浅色 `#9E9E9E` / 深色半透明白），赋值即生效 |
+| `PPContentHosting.contentViewController(_:didChangeEditingState:)` | 内容页 -> 宿主的上报方法，有默认空实现，老接入方不用改代码 |
+
+### 接入方式一：内容页自己上报（推荐）
+
+编辑器自己最清楚「脏没脏」，改完顺手报一次就行：
+
+```swift
+final class MyEditorViewController: UIViewController, PPContentDisplaying {
+    weak var contentHost: PPContentHosting?   // 必须 weak，否则和宿主循环引用
+
+    private var hasUnsavedChanges = false {
+        didSet {
+            // 每次输入都调也没关系：宿主发现状态没变就直接跳过，不会重复重绘。
+            contentHost?.contentViewController(self, didChangeEditingState: hasUnsavedChanges)
+        }
+    }
+}
+```
+
+### 接入方式二：集成方按内容 id 设置
+
+保存、另存、导入这类由外部触发的场景，直接按 id 改：
+
+```swift
+// 有未保存修改：Tab 上的 x 变成灰点
+split.detailHost.setEditing(true, forItemID: "tech-1")
+
+// 保存完成：灰点变回 x
+split.detailHost.setEditing(false, forItemID: "tech-1")
+
+// 全部保存
+split.detailHost.clearAllEditingStates()
+```
+
+### 关 Tab 前挡一层确认
+
+灰点本身就能点（触摸平台），要避免误关丢内容，用 `shouldCloseTab` 拦一下。钩子是**同步**返回的，
+所以姿势是「先返回 false 拦下，用户确认后再关」：
+
+```swift
+split.detailHost.shouldCloseTab = { [weak split] item, isEditing in
+    guard isEditing, let item = item else { return true }   // 没有未保存修改：直接关
+
+    let alert = UIAlertController(title: "还有未保存的修改", message: "关闭会丢掉这些修改。", preferredStyle: .alert)
+    alert.addAction(UIAlertAction(title: "取消", style: .cancel))
+    alert.addAction(UIAlertAction(title: "放弃修改", style: .destructive) { _ in
+        // 先清编辑态（否则钩子会再拦一次），再关。
+        split?.detailHost.setEditing(false, forItemID: item.id)
+        split?.detailHost.closeTab(forItemID: item.id)
+    })
+    split?.present(alert, animated: true)
+    return false
+}
+```
+
+### 边界与坑
+
+- **不持久化**：编辑态不写进冷启动快照。未保存的内容本来就没法还原，恢复出来的 Tab 一律按「干净」处理。
+- **预览槽位复用时自动复位**：`openPreview` 复用同一个预览 Tab 换内容时，宿主动手把编辑态清成 `false`，不会把上一份内容的灰点挂到新内容上。
+- **Tab 还不存在时上报无效**：内容页在 `configure(with:)` 里同步上报的话，那一刻 Tab 还没建出来，宿主会直接忽略。想让初始就是脏状态，请在 `viewDidAppear` 之后或由外部调 `setEditing(_:forItemID:)`。
+- **按 id 只命中第一个**：`setEditing(_:forItemID:)` / `closeTab(forItemID:)` 只改第一个匹配的 Tab。关掉 `deduplicateOpenedItems` 后，同一个内容可以开成多个 Tab，这种场景请用 `setEditing(_:forContentViewController:)` 精确定位。
+- **别和 `didChangeEditedState` 搞混**：那个是「预览 Tab 要不要固定成正式 Tab」（VS Code 语义），这个只管灰点的显隐，两者互不影响，可以同时上报。
+- **iOS 12 可用**：只用了 `UIView` + `cornerRadius`，没有新 API。`pp_editingIndicator` 在 iOS 12 上退回浅色那一份。
+
 ## 同步左侧列表高亮（选中项回调）
 
 右侧多 Tab 宿主会在**选中项变化**时通知外部：点 Tab、打开 / 复用内容、关闭 Tab 后自动切到相邻 Tab，都会触发。
@@ -195,6 +283,108 @@ split.detailHost.delegate = coordinator   // delegate 是 weak，记得自己强
 - `delegate` 是 `weak` 引用；`onSelectedItemChanged` 由宿主强持有，闭包里请用 `weak` 捕获外部对象。
 - 仓库内 Demo 的接线见 `DemoRootFactory.makeiPadOrMacRoot()`：右侧切到另一分类的内容时，左侧标签栏也会自动切过去并高亮该行。
 
+## 冷启动恢复上次的 Tab
+
+右侧多 Tab 宿主可以记住上次打开的 Tab 和选中项，下次启动自动还原。
+
+**这个能力默认关闭。** 不打开时库完全不读 `UserDefaults`、不建任何 Tab，行为和没有它时一模一样 —— 升级上来的项目不会突然多出几个标签页。
+
+### 最小接入（2 步）
+
+```swift
+// 1) 启动时打开，并告诉库「内容 id 怎么还原成 PPContentItem」。
+//    放在 application(_:didFinishLaunchingWithOptions:) 里、建窗口之前即可。
+PPTabRestoration.enable { DataStore.item(withID: $0) }
+
+// 2) 数据层提供同步、O(1) 的反查。
+static func item(withID id: String) -> PPContentItem? {
+    itemsByID[id]
+}
+```
+
+时序是安全的：`didFinishLaunchingWithOptions` 一定早于任何 `DetailHostViewController` 的 `viewDidLoad`（Scene 生命周期下窗口在 `SceneDelegate` 才建，传统生命周期下窗口在同一方法里稍后才建）。
+
+> resolver 必须是**同步、O(1) 的本地查表**：它在启动阶段、主线程上被逐条调用，不能发网络请求。
+> 如果业务数据是异步加载的，请先把数据准备好再建根控制器，或者先不要开启这个能力。
+
+### API
+
+全局（`PPTabRestoration`，`@MainActor`）：
+
+| API | 类型 | 默认值 | 语义 |
+|---|---|---|---|
+| `isEnabled` | `Bool` | `false` | 功能总开关。赋值本身不读盘不写盘，只是一份「给之后首次加载的宿主看的配置」 |
+| `persistenceKey` | `String` | `"PPTabRestoration"` | 存档键。关闭时完全不生效；不接受 `nil` |
+| `contentResolver` | `((String) -> PPContentItem?)?` | `nil` | 内容 id 反查。返回 `nil` = 这条内容确实没了 |
+| `enable(resolver:)` | 方法 | — | 默认键 + 打开，一行接入的主入口 |
+| `enable(persistenceKey:resolver:)` | 方法 | — | 自定义键（多窗口 / 要存多份时用） |
+| `disable()` | 方法 | — | 只关卡，**不删数据** |
+| `resetPersistedTabs()` | 方法 | — | 只删存档，**不关当前 Tab** |
+
+单宿主覆盖（`DetailHostViewController`，三个属性默认都是 `nil` = 跟随全局）：
+
+| 属性 | 语义 |
+|---|---|
+| `restoresTabsOnLaunch: Bool?` | `nil` 跟随全局；`true` / `false` 只覆盖本宿主（例如辅助窗口不恢复） |
+| `tabRestorationKey: String?` | 本宿主专用的存档键，`nil` 用全局键 |
+| `tabRestorationResolver: ((String) -> PPContentItem?)?` | 本宿主专用的解析器，`nil` 用全局 resolver |
+
+合并规则：
+
+```text
+enabled  = restoresTabsOnLaunch ?? PPTabRestoration.isEnabled
+resolver = tabRestorationResolver ?? PPTabRestoration.contentResolver
+key      = tabRestorationKey ?? PPTabRestoration.persistenceKey
+```
+
+三项都齐才生效，否则整个能力按关闭处理。
+
+### 多窗口
+
+同一个键被两个窗口共用时会互相覆盖（谁最后操作 Tab，谁的状态留下，下次两个窗口又都恢复成那一份）。
+`viewDidLoad` 时宿主还没进窗口（`view.window` 是 `nil`），库没法自动按场景区分，所以要显式指定：
+
+```swift
+func scene(_ scene: UIScene,
+           willConnectTo session: UISceneSession,
+           options connectionOptions: UIScene.ConnectionOptions) {
+    guard let windowScene = scene as? UIWindowScene else { return }
+
+    let window = RootBuilder.makeWindow(
+        windowScene: windowScene,
+        iPhoneRoot: { DemoRootFactory.makeiPhoneRoot() },
+        iPadOrMacRoot: {
+            let split = /* 构建你的分栏根 */
+            // 必须在返回之前设置：窗口装根控制器时就会触发 split.viewDidLoad，
+            // 而它内部 embed(detailHost) 会当场触发宿主的 viewDidLoad。
+            split.detailHost.tabRestorationKey = "PPTabRestoration." + session.persistentIdentifier
+            return split
+        }
+    )
+    self.window = window
+    window.makeKeyAndVisible()
+}
+```
+
+单窗口 App 什么都不用做，共用一个全局键即可。
+
+### 原理与边界
+
+- **只求值一次**：宿主在 `viewDidLoad` 里读一次配置并缓存。运行期改全局开关只影响之后才首次加载的宿主，**不会追溯**已经上屏的宿主（配置项也必须在宿主 view 首次加载前设置）。
+- **恢复不写盘**：resolver 返回 `nil` 的条目只跳过、不改写存档，避免一次数据未就绪就把用户历史永久删掉；等用户下一次真正操作 Tab 时才写入新快照。
+- **空 Tab 也恢复**：`id` 存 `nil`，恢复后仍是一个标题为 "New Tab" 的空 Tab，不调 `configure`。
+- **保存的是下标不是 id**：关掉 `deduplicateOpenedItems` 时同一个内容可以有多个 Tab，用 id 无法区分；恢复时也不去重，按原样还原。
+- **预览标记保留**：`isPreview` 会一起存；脏数据里出现多个预览 Tab 时只认第一个，保证预览槽唯一。
+- **有安全上限**：最多恢复 50 个 Tab（库内固定值，防脏数据一次拉起成百上千个控制器）。
+- **`resetPersistedTabs()` 只清存档**，不会关闭当前 Tab；宿主还活着时下一次操作会立刻写回。
+- **iOS 12 可用**：只依赖 `Codable` / `JSONEncoder` / `UserDefaults.data`，都是 iOS 12 之前就有的 API。
+- **别和 `PPAppearance.persistenceKey` 共用键**：两者数据格式不同，会互相覆盖。
+- iPhone 路径（`PPPhoneContentRouter` + 导航栈 push）不归这个能力管，开启后对它没有任何影响。
+
+### 验证方法
+
+在 iPad / Mac 上打开 3 个 Tab（含一个预览、一个空 Tab），切到第 2 个 → 杀掉 App 重启 → Tab 数量、顺序、选中项、预览斜体、空 Tab 都应一致；把 `enable` 那行注释掉再试一次，应该完全不恢复。
+
 ## 深色模式（夜间模式）
 
 库内所有颜色都走**系统语义色**，所以集成方不需要写任何代码 —— 系统切到深色，界面自动跟着变（前提是 App 没有把 `UIUserInterfaceStyle` 锁成 Light）。
@@ -207,6 +397,7 @@ split.detailHost.delegate = coordinator   // delegate 是 weak，记得自己强
 | 左右分栏线、底部标签栏上边线 | `UIColor.pp_separator` |
 | Tab 条与内容区之间的细线 | `UIColor.pp_hairlineSeparator` |
 | Tab 标题、侧栏按钮图标 | `UIColor.pp_label` |
+| 编辑态灰点 | `DetailHostViewController.tabEditingIndicatorColor`，默认 `UIColor.pp_editingIndicator` |
 | 占位文案 | `UIColor.pp_tertiaryLabel` |
 
 这些语义色集中定义在库内的 `UIColor+Compatibility.swift`：

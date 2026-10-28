@@ -32,7 +32,10 @@ public enum RootBuilder {
     /// - Important: 窗口必须挂到场景上，否则它在屏幕上根本不显示，
     ///   而且 `isHidden` 还是 false —— 属于最难查的一类问题。
     /// - Returns: 建好的窗口（**不显示**，需要的话由调用方 `makeKeyAndVisible()`）。
+    /// - Note: 标了 `@MainActor`：这个方法要造窗口、装根控制器，本来就只能在主线程调；
+    ///   而它内部调的 `PPAppearance.apply(to:)` 也是主线程隔离的，不标的话在「默认非隔离」的编译配置下会直接报错（调用方是 SceneDelegate，本来就在主线程）。
     @available(iOS 13.0, *)
+    @MainActor
     public static func makeWindow(
         windowScene: UIWindowScene,
         iPhoneRoot: @escaping () -> UIViewController,
@@ -50,7 +53,9 @@ public enum RootBuilder {
     /// **传统 AppDelegate 生命周期**（以及 iOS 12）用这个重载：在
     /// `application(_:didFinishLaunchingWithOptions:)` 里直接调用即可，不需要 `#available` 包一层。
     ///
+    /// - Note: 和上面那个重载一样标 `@MainActor`，理由见那里的说明。
     /// - Returns: 建好的窗口（**不显示**，需要的话由调用方 `makeKeyAndVisible()`）。
+    @MainActor
     public static func makeWindow(
         iPhoneRoot: @escaping () -> UIViewController,
         iPadOrMacRoot: @escaping () -> UIViewController

@@ -27,6 +27,9 @@ final class TabDeduplicationTests: XCTestCase {
     private func makeHost(deduplicate: Bool) -> DetailHostViewController {
         let host = DetailHostViewController { StubContentViewController() }
         host.deduplicateOpenedItems = deduplicate
+        // 关掉冷启动恢复：测试跑在 Demo App 里，而 Demo 开了全局恢复，
+        // 模拟器里可能留着上次运行打开的 Tab 快照，会让“新宿主”凭空多出几个 Tab，count 断言全崩。
+        host.restoresTabsOnLaunch = false
 
         // 放进真实窗口并走一次布局，模拟真实的分栏环境：
         // 这样 Tab 条的 collectionView 会先完成首次加载（此时 0 个 Tab），

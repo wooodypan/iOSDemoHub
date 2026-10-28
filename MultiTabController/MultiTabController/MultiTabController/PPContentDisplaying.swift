@@ -20,6 +20,28 @@ public protocol PPContentHosting: AnyObject {
     func contentViewController(_ contentViewController: UIViewController,
                                requestsOpen item: PPContentItem,
                                mode: PPContentOpenMode)
+
+    /// 内容页的「编辑状态」发生变化：`isEditing = true` 表示有未保存的修改。
+    /// 宿主据此在承载它的 Tab 上显示 / 隐藏那个灰色小圆点（Windows 11 记事本的未保存标识）。
+    ///
+    /// 注意别和上面的 `didChangeEditedState` 搞混：
+    ///   - `didChangeEditedState` 管的是「预览 Tab 要不要固定成正式 Tab」（VS Code 语义）；
+    ///   - 本方法只管视觉上的未保存标识，两者互相独立，可以同时上报。
+    ///
+    /// 提供了默认空实现（见文件末尾的扩展），所以老的实现类不改代码也能编译通过。
+    func contentViewController(_ contentViewController: UIViewController,
+                               didChangeEditingState isEditing: Bool)
+}
+
+// MARK: - PPContentHosting 默认实现
+// 这里必须写成「协议要求 + 扩展给默认实现」，不能只写在扩展里：
+// 只写在扩展里的话，通过 PPContentHosting 存在类型调用时会静态派发到空实现，
+// 宿主自己的实现永远不会被调到（Swift 的经典坑）。
+public extension PPContentHosting {
+
+    /// 默认什么都不做：只有真正在意的宿主（DetailHostViewController）才需要实现。
+    func contentViewController(_ contentViewController: UIViewController,
+                               didChangeEditingState isEditing: Bool) {}
 }
 
 // MARK: - PPContentDisplaying
