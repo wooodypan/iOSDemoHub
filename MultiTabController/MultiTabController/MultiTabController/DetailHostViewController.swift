@@ -191,6 +191,20 @@ public final class DetailHostViewController: UIViewController,
         }
     }
 
+    /// Tab 条那一行（Tab 单元格脚下那条 36pt 高的带子）的底色。
+    ///
+    /// 默认 `.clear`：不涂色，露出外面容器的底色 —— 这是本库一直以来的行为，老接入方不改代码就不会看到任何变化。
+    /// 想让 Tab 条和自己 App 的主题连成一片（比如跟正文同一个底色）时赋值即可。
+    ///
+    /// 和上面两个颜色的分工别搞混：那两个管的是「单个 Tab 的底色」，只覆盖有 Tab 的那几段；
+    /// 这一个管的是「整条 Tab 条」，Tab 少的时候右侧那片空白也归它管 ——
+    /// 只改单元格颜色的话，Tab 一少就会看到「有 Tab 的地方一个色、右边空着一片另一个色」。
+    public var tabBarBackgroundColor: UIColor = .clear {
+        didSet {
+            applyTabBarBackgroundColor()
+        }
+    }
+
     /// Tab 处于编辑态时，替代关闭按钮 x 的那个灰色小圆点的颜色。
     /// 默认 `UIColor.pp_editingIndicator`（浅色中灰 / 深色半透明白），赋值后已经上屏的 Tab 立刻改色。
     public var tabEditingIndicatorColor: UIColor = .pp_editingIndicator {
@@ -198,6 +212,17 @@ public final class DetailHostViewController: UIViewController,
             applyTabBarColors()
         }
     }
+
+    /// 系统切换浅色 / 深色之后回调一次（同一个外观下别的 trait 变化不会触发：改字号、改对比度都不会走到这里）。
+    ///
+    /// ### 什么时候需要接它
+    /// 上面那几个颜色如果是「按自己主题现算出来的实色」（比如跟着正文底色算），切深浅时它们不会自己变。
+    /// 而 Tab 标题和关闭按钮用的是动态色（深色下会变白 / 变浅），底色却停在旧外观上 ——
+    /// 屏幕上就成了「白字落在一条浅色带子上」，Tab 名直接看不见。
+    /// 颜色可能是动态色、也可能跟接入方自己的主题走，库不替谁做假设，只把 trait 变化原样报出来，重不重算由接入方决定。
+    ///
+    /// - Note: 本属性会被宿主强持有，闭包里请用 `weak` 捕获外部对象，避免循环引用。
+    public var onUserInterfaceStyleChange: (() -> Void)?
 
     // Mac Catalyst 专用：⌘W 在 Catalyst 下走 AppKit 的按键等价派发（NSWindow 的 performClose:），
     // UIKeyCommand 抢不过它，所以要额外装一个底层键盘监听兜底（见 CatalystKeyInterceptor）。
@@ -284,7 +309,11 @@ public final class DetailHostViewController: UIViewController,
     // public 类里 override 系统 open 方法必须同样声明 public（编译器强制要求）
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .clear
+        // Tab 条那一行的底色。默认透明（露出外层容器的底色），由 `tabBarBackgroundColor` 定制。
+        // 落在宿主自己的 view 上而不是 collectionView 上：collectionView 只覆盖有 Tab 的那几段，
+        // Tab 少时右边那片空白不归它管。宿主 view 的下半部分被 contentContainerView 盖着（它不透明），
+        // 所以这个底色只会露在 Tab 条那一行，不会渗到正文区。
+        view.backgroundColor = tabBarBackgroundColor
         setupViews()
         refreshUI()
         // 冷启动恢复：必须在这里，而且必须早于下面的 reloadData。
@@ -327,6 +356,16 @@ public final class DetailHostViewController: UIViewController,
         guard needsScrollToRestoredSelection, view.bounds.width > 0 else { return }
         needsScrollToRestoredSelection = false
         scrollToSelectedItem(animated: false)
+    }
+
+    // 外观切换后报一声，让接入方有机会把「按主题算出来的实色」重算一遍（见 onUserInterfaceStyleChange 的注释）。
+    // ⚠️ 这里用 traitCollectionDidChange 而不是 iOS 17 的 registerForTraitChanges：
+    // 本库最低支持 iOS 12，那套新 API 在老系统上没有，两个版本都得能用。
+    public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        // 同一档外观下 trait 也会因为窗口尺寸、显示缩放之类变一趟，那些跟颜色无关，不要惊动接入方
+        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else { return }
+        onUserInterfaceStyleChange?()
     }
 
     // 向系统声明本控制器支持的键盘快捷键列表。
@@ -1055,6 +1094,14 @@ public final class DetailHostViewController: UIViewController,
         collectionView.reloadItems(at: indexPaths)
     }
 
+    // 把 Tab 条底色落到宿主 view 上。
+    // 单独一个方法而不是直接写在 didSet 里：didSet 可能在 view 加载之前触发（集成方 init 完就赋值），
+    // 那时 `view` 会提前把视图树建出来 —— 没必要，而且 viewDidLoad 里自己也会再设一次。
+    private func applyTabBarBackgroundColor() {
+        guard isViewLoaded else { return }
+        view.backgroundColor = tabBarBackgroundColor
+    }
+
     // Tab 条更新遵循“能少刷就少刷”：切 tab / 开 / 关都不全量 reloadData，
     // 而是按需 reload / insert / delete 受影响的 item，避免全部 cell 重建与全量布局。
     // 滚动放在 performBatchUpdates 的 completion 里：此时布局已就绪，
@@ -1249,13 +1296,48 @@ final class DetailTabCell: UICollectionViewCell {
     // 编辑态小圆点的直径：比旁边的 x 小一圈，像 Windows 11 记事本那样只做个「有改动」的提示。
     private static let editingDotDiameter: CGFloat = 8
 
+    // 关闭图标：自己画两条 45 度短线，不用字母 x，也不用 SF Symbols。
+    // 不用字母 x：字符的宽高和基线跟着字体走，同一个字号在不同系统版本上粗细、位置都会飘，垂直居中还得靠肉眼微调。
+    // 不用 SF Symbols：UIImage(systemName:) 要 iOS 13 起，本库最低支持 iOS 12，路径上就断了。
+    // 线宽 1.5、端点磨圆，视觉上接近系统自带的关闭按钮。
+    private static let closeIconImage: UIImage = {
+        let canvas: CGFloat = 18        // 画布边长，和按钮热区一样大
+        let inset: CGFloat = 4.5        // 四周留白，线条只占中间 9pt，看起来更精致
+        let lineWidth: CGFloat = 1.5
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: canvas, height: canvas))
+        let image = renderer.image { context in
+            let cg = context.cgContext
+            // 先用黑色占位：真正的颜色交给 tintColor，见最后的 alwaysTemplate。
+            cg.setStrokeColor(UIColor.black.cgColor)
+            cg.setLineWidth(lineWidth)
+            // 圆头像笔尖，直角端点在这个尺寸下会显得很硬。
+            cg.setLineCap(.round)
+
+            // 从左上到右下
+            cg.move(to: CGPoint(x: inset, y: inset))
+            cg.addLine(to: CGPoint(x: canvas - inset, y: canvas - inset))
+            // 从右上到左下
+            cg.move(to: CGPoint(x: canvas - inset, y: inset))
+            cg.addLine(to: CGPoint(x: inset, y: canvas - inset))
+            cg.strokePath()
+        }
+        // alwaysTemplate：图片只留透明通道，颜色全程由 tintColor 决定。
+        // 这样 tintColor 直接给语义色就行，浅色 / 深色切换时系统会自己重新上色，不用监听 traitCollection。
+        return image.withRenderingMode(.alwaysTemplate)
+    }()
+
     private let titleLabel = UILabel()
 
     // 关闭按钮用 .custom 而不是 .system，是踩过坑的：
     // Mac Catalyst 会给 .system 按钮自动配一套「指针悬停外观」，鼠标压上去时系统会自己给按钮铺一层高亮背景，
-    // 那层背景叠在 Tab 底色上不受我们控制 —— 表现就是「x 的显隐正常，但悬停时的底色不对 / 被盖掉」。
-    // .custom 按钮没有这层系统外观，整个 Tab 的底色变化完全由我们自己说了算（标题颜色本来就已手动指定，不受影响）。
+    // 那层背景叠在 Tab 底色上不受我们控制，表现就是 Tab 的 hover 底色被系统盖掉、我们自己设的色不生效。
+    // .custom 按钮没有这层系统外观；再加上按钮里现在没有任何可见内容，整个外观完全由我们说了算。
     private let closeButton = UIButton(type: .custom)
+
+    // 关闭图标的真正画布。按钮本身不带可见内容，只当点击热区用；x 画在这个 UIImageView 上。
+    // 分开的理由：显隐、颜色都能单独控制，不用再靠「把标题色设成透明」这种绕路办法。
+    private let closeIconView = UIImageView()
 
     // 编辑态标识：一个小圆点，占的正是关闭按钮的位置。
     // 用 UIView 画而不是给按钮换个 "●" 字符：字符的字体度量各家不同，圆点容易偏上偏下、大小也难对齐。
@@ -1282,8 +1364,8 @@ final class DetailTabCell: UICollectionViewCell {
     // 灰点这一刻是否露着。
     var isEditingIndicatorVisible: Bool { !editingDotView.isHidden }
 
-    // 关闭按钮的 x 这一刻是否露着（x 的显隐靠标题色控制，见 applyGlyphVisibility）。
-    var isCloseGlyphVisible: Bool { closeButton.titleColor(for: .normal) != .clear }
+    // 关闭图标（那个 x）这一刻是否露着。
+    var isCloseGlyphVisible: Bool { !closeIconView.isHidden }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -1310,13 +1392,18 @@ final class DetailTabCell: UICollectionViewCell {
         titleLabel.lineBreakMode = .byTruncatingTail
 
         closeButton.translatesAutoresizingMaskIntoConstraints = false
-        closeButton.setTitle("x", for: .normal)
-        // 关闭按钮的 x 也走语义色，比正文浅一档，不抢标题的视线。
-        closeButton.setTitleColor(.pp_secondaryLabel, for: .normal)
-        closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .bold)
+        // 按钮本身不放任何内容，只当那 18x18 的点击热区用；显示什么交给 closeIconView。
+        // 以前是把 "x" 当标题、再靠「把标题色设成透明」来藏它，现在这套绕路可以不要了。
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-        // x 现在有两种含义（普通关闭 / 编辑态下悬浮才出现），给 VoiceOver 一个稳定说法。
+        // x 在编辑态下会被灰点顶掉、含义会变，给 VoiceOver 一个稳定说法。
         closeButton.accessibilityLabel = "关闭标签页"
+
+        closeIconView.translatesAutoresizingMaskIntoConstraints = false
+        closeIconView.image = Self.closeIconImage
+        // 比正文浅一档，不抢标题的视线；给的是语义色，浅色 / 深色会自动跟着变。
+        closeIconView.tintColor = .pp_secondaryLabel
+        // 只负责显示，点击要穿透给下面的按钮。
+        closeIconView.isUserInteractionEnabled = false
 
         editingDotView.translatesAutoresizingMaskIntoConstraints = false
         // 默认色和宿主上的 tabEditingIndicatorColor 默认值一致，configure 时会按外部配置覆盖。
@@ -1337,6 +1424,8 @@ final class DetailTabCell: UICollectionViewCell {
 
         contentView.addSubview(titleLabel)
         contentView.addSubview(closeButton)
+        // 图标和灰点都盖在按钮上面，但都不吃事件，点击最终还是落到 closeButton。
+        contentView.addSubview(closeIconView)
         contentView.addSubview(editingDotView)
 
         NSLayoutConstraint.activate([
@@ -1348,6 +1437,12 @@ final class DetailTabCell: UICollectionViewCell {
             closeButton.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             closeButton.widthAnchor.constraint(equalToConstant: 18),
             closeButton.heightAnchor.constraint(equalToConstant: 18),
+
+            // 图标与按钮完全重合，等于把 x 画在热区正中间，不用再操心字符基线。
+            closeIconView.leadingAnchor.constraint(equalTo: closeButton.leadingAnchor),
+            closeIconView.trailingAnchor.constraint(equalTo: closeButton.trailingAnchor),
+            closeIconView.topAnchor.constraint(equalTo: closeButton.topAnchor),
+            closeIconView.bottomAnchor.constraint(equalTo: closeButton.bottomAnchor),
 
             // 灰点就摆在 x 的正中间：两者占同一个位置，同一时刻只会露出一个。
             editingDotView.centerXAnchor.constraint(equalTo: closeButton.centerXAnchor),
@@ -1414,9 +1509,9 @@ final class DetailTabCell: UICollectionViewCell {
             #endif
         }
 
-        // 用标题颜色控制 x 的显隐，而不是 isHidden：
-        // isHidden 的按钮收不到点击，而编辑态下「点灰点」本身就该能关闭这个 Tab。
-        closeButton.setTitleColor(showsCloseButton ? .pp_secondaryLabel : .clear, for: .normal)
+        // 这里可以放心用 isHidden：藏的是图标视图，不是按钮。
+        // 点击热区（closeButton）一直存在、一直能响应，所以「编辑态下点灰点也能关 Tab」不受影响。
+        closeIconView.isHidden = !showsCloseButton
         editingDotView.isHidden = !(isEditing && !showsCloseButton)
     }
 

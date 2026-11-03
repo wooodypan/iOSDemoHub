@@ -15,7 +15,7 @@
 - **DetailViewController**：右侧详情页，含「标记为已编辑 / 清除编辑标记」示例，用于固定当前 Tab
 - **DetailHostViewController**：右侧多 Tab 宿主，承载 VS Code 预览/正式语义
 - **按内容 ID 去重**：`DetailHostViewController.deduplicateOpenedItems`（默认 `true`）。打开一个**已经打开过**的内容时不再新建 Tab，而是直接定位到那个 Tab；置 `false` 则恢复原语义（同一个内容可以开成多个 Tab）。比较依据是 `PPContentItem.id`，所以请保证业务 id 在同一个宿主里唯一；没有内容的空 Tab 不参与去重
-- **Tab 条外观可定制**：Tab 单元格只圆**上面两个角**、底边与 Tab 条底边对齐、顶部留 5pt 间距（像浏览器标签页一样「从底边长出来」）；选中 / 未选中底色由 `DetailHostViewController.tabSelectedBackgroundColor` / `.tabUnselectedBackgroundColor` 两个公开变量控制，赋值即生效；Mac Catalyst 下关闭按钮（x）默认隐藏、鼠标悬浮到 Tab 上才出现，同时该 Tab 底色点亮成选中色。详见下文「[定制 Tab 条外观](#定制-tab-条外观)」
+- **Tab 条外观可定制**：Tab 单元格只圆**上面两个角**、底边与 Tab 条底边对齐、顶部留 5pt 间距（像浏览器标签页一样「从底边长出来」）；选中 / 未选中底色由 `DetailHostViewController.tabSelectedBackgroundColor` / `.tabUnselectedBackgroundColor` 两个公开变量控制，整条 Tab 条的底色由 `.tabBarBackgroundColor` 控制，赋值即生效；Mac Catalyst 下关闭按钮（x）默认隐藏、鼠标悬浮到 Tab 上才出现，同时该 Tab 底色点亮成选中色。详见下文「[定制 Tab 条外观](#定制-tab-条外观)」
 - **Tab 编辑状态（未保存修改的灰点）**：把 Tab 标成「编辑中」后，关闭按钮 x 会换成灰色小圆点（Windows 11 记事本那种未保存标识）；Mac Catalyst 下鼠标悬浮时灰点再换回可点击的 x。状态可由内容页通过 `contentHost` 自报，也可由集成方按内容 id 设置。详见下文「[Tab 编辑状态](#tab-编辑状态未保存修改的灰点)」
 - **键盘快捷键**：iPad / Mac Catalyst 下按 `Command+W` 关闭当前选中的 Tab；所有 Tab 都关闭后可按配置弹出「是否退出 App」确认框，弹框开关为 `DetailHostViewController.showExitPromptWhenAllTabsClosed`（默认开启），退出动作可用 `exitAction` 自定义
   - **Mac Catalyst 下真正生效的是底层事件监听**：⌘W 是系统菜单 “Close Window” 的*按键等价（key equivalent）*，由 AppKit 在 `NSWindow` 上执行 `performClose:`，优先级高于 `UIKeyCommand`，所以只加 `keyCommands` / 只删菜单项都拦不住。库内新增 `CatalystKeyInterceptor`，用 `NSEvent` 本地事件监听在按键等价处理之前把 ⌘W 截下
@@ -136,6 +136,25 @@ techList.router = router
 |---|---|---|
 | `DetailHostViewController.tabSelectedBackgroundColor` | `UIColor.pp_tabSelectedBackground`（浅色 `#F2F2F2` / 深色 `#474747`） | 选中 Tab 的底色，作用在单元格的 `contentView.backgroundColor` 上 |
 | `DetailHostViewController.tabUnselectedBackgroundColor` | `.clear` | 未选中 Tab 的底色 |
+| `DetailHostViewController.tabBarBackgroundColor` | `.clear` | 整条 Tab 条的底色，作用在宿主视图的背景上 |
+
+> `tabBarBackgroundColor` 和上面两个的分工：那两个只管「单个 Tab 的底色」，只覆盖有 Tab 的那几段；
+> 这一个管「整条 Tab 条」，Tab 少的时候右侧那片空白也归它管 —— 只改单元格颜色的话，
+> Tab 一少就会看到「有 Tab 的地方一个色、右边空着一片另一个色」。
+> 想做成「选中的 Tab 和内容区同色、其余略暗」那种浏览器效果时，配合使用：
+> `tabBarBackgroundColor` 给略暗的底色，`tabUnselectedBackgroundColor` 留 `.clear`，`tabSelectedBackgroundColor` 给内容区同色。
+
+> ⚠️ 自己算出来的颜色要记得跟着外观重算。这几个属性赋的是「实色」就**不会**自己变 ——
+> 系统切到深色时，Tab 标题和关闭按钮（动态色）会变白，底色却还停在浅色那一套，
+> 于是白字落在浅底上，Tab 名直接看不见。把重算逻辑接到 `detailHost.onUserInterfaceStyleChange` 上即可：
+>
+> ```swift
+> split.detailHost.onUserInterfaceStyleChange = { [weak self] in
+>     self?.applyTabBarStyle()   // 按新外观重新算三种颜色，再赋回宿主
+> }
+> ```
+>
+> 用 `UIColor.pp_adaptive(light:dark:)` 之类的动态色时不用接：动态色由系统在绘制时求值，切外观会自动变。
 
 ```swift
 import MultiTabController
@@ -417,6 +436,9 @@ split.detailHost.tabSelectedBackgroundColor = .pp_adaptive(
 > ⚠️ 一个容易踩的坑：`CALayer` 的 `borderColor` 是 `CGColor`，**不参与动态色解析**，外观切换时不会自动更新，
 > 需要在 `traitCollectionDidChange(_:)`（iOS 17+ 建议用 `registerForTraitChanges`）里手动重设。
 > 库内的 Tab 单元格没有使用 layer 描边，所以不受影响；自己扩展样式时请留意。
+>
+> 同理，**自己按主题算出来的实色**（比如跟着正文底色算的 Tab 条颜色）也不会自己变 ——
+> 这类颜色接到 `DetailHostViewController.onUserInterfaceStyleChange` 上重算，比自己去拦 trait 变化稳：宿主外观一变它就报一次。
 
 ## App 内手动切换浅色 / 深色
 
