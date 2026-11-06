@@ -24,6 +24,7 @@
 - **DeviceHelper / WindowManager**：设备判断与多窗口（新窗口）能力
 - **PPAppearance**：App 内手动切换浅色 / 深色，不跟系统。`PPAppearance.mode = .dark` 一行生效，可选持久化记忆；默认仍是跟随系统，iOS 12 上自动无效。详见下文「[App 内手动切换浅色 / 深色](#app-内手动切换浅色--深色)」
 - **冷启动恢复上次的 Tab**：`PPTabRestoration.enable { ... }` 一行接入，**默认关闭**（不打开时零副作用）。全局开关 + 单宿主覆盖，多窗口可各存一份；恢复 Tab 顺序、选中项、预览标记与空 Tab。详见下文「[冷启动恢复上次的 Tab](#冷启动恢复上次的-tab)」
+- **记住侧栏折叠状态**：用户收起左侧栏后，冷启动自动还原（展开也一样）。**默认开启**，集成方不用写代码；全局开关 `PPSidebarRestoration.isEnabled`，单容器可用 `sidebarStatePersistenceKey` 让多窗口各存一份。详见下文「[记住侧栏折叠状态](#记住侧栏折叠状态)」
 - **同时兼容两套生命周期**：UIScene 生命周期（iOS 27 SDK 起 Apple 强制要求，见 [TN3187](https://developer.apple.com/documentation/Technotes/tn3187-Migrating-to-the-UIKit-scene-based-life-cycle)）与传统 AppDelegate 生命周期，见下文「[生命周期兼容](#生命周期兼容uiscene--appdelegate)」
 
 > 示例 / Demo：`ArticleListViewController.swift`、`DataStore.swift`、`AppDelegate.swift` 位于宿主层（与 `AppDelegate` 平级），**不随 pod / SPM 发布**。它们是仓库自带的完整接线示例；集成时请用你自己的列表控制器，只需让它持有 `PPContentRouting` 并产出 `PPContentItem` 即可。
@@ -403,6 +404,82 @@ func scene(_ scene: UIScene,
 ### 验证方法
 
 在 iPad / Mac 上打开 3 个 Tab（含一个预览、一个空 Tab），切到第 2 个 → 杀掉 App 重启 → Tab 数量、顺序、选中项、预览斜体、空 Tab 都应一致；把 `enable` 那行注释掉再试一次，应该完全不恢复。
+
+## 记住侧栏折叠状态
+
+`SplitContainerViewController` 会记住用户上次把左侧栏收起还是展开，冷启动时直接按上次的样子出来，不会先展开再跳折叠。
+
+**默认开启，集成方什么都不用写。**
+
+### 关闭
+
+在创建根控制器之前：
+
+```swift
+PPSidebarRestoration.isEnabled = false
+```
+
+关掉后库完全不读也不写 UserDefaults，行为退回「每次启动都展开」。
+
+### API
+
+| 成员 | 说明 |
+|---|---|
+| `PPSidebarRestoration.isEnabled` | 全局开关，默认 `true`。要在根控制器创建之前设置 |
+| `PPSidebarRestoration.persistenceKey` | 存档键，默认 `"PPSidebarRestoration"`。空字符串表示不读不写 |
+| `PPSidebarRestoration.resetPersistedState()` | 只清存档，不改当前界面 |
+| `SplitContainerViewController.restoresSidebarStateOnLaunch` | `Bool?`，默认 `nil` 跟随全局；单容器覆盖 |
+| `SplitContainerViewController.sidebarStatePersistenceKey` | `String?`，默认 `nil` 用全局键；单容器指定自己的键 |
+
+合并规则：
+
+```text
+enabled = restoresSidebarStateOnLaunch ?? PPSidebarRestoration.isEnabled
+key     = sidebarStatePersistenceKey ?? PPSidebarRestoration.persistenceKey
+```
+
+两个属性都只在容器的 `viewDidLoad` 求值一次，必须在上屏之前设置。
+
+### 显式设置优先于存档
+
+在容器加载前调 `isLeftSidebarVisible = ...`，这次的值会覆盖存档，并写回存档：
+
+```swift
+let split = SplitContainerViewController(...)
+split.isLeftSidebarVisible = true   // 不管上次是不是折叠，这次强制展开，并记为新的默认值
+```
+
+反过来要注意：如果每次启动都无条件写这一行，持久化就永远不会生效，因为存档每次都被覆盖。
+
+### 多窗口
+
+一个 App 里同时有多个 `SplitContainerViewController` 时，必须给每个容器不同的键，否则会互相覆盖：
+
+```swift
+split.sidebarStatePersistenceKey = "PPSidebarRestoration." + session.persistentIdentifier
+```
+
+同样要在容器上屏之前设。库里不能自动按场景拼后缀：`viewDidLoad` 那一刻容器还没进窗口，拿不到 scene。
+
+### 原理与边界
+
+- **只求值一次**：容器在 `viewDidLoad` 里读一次配置。运行期改全局开关只影响之后首次加载的容器，不追溯已经上屏的。
+- **首帧就是最终状态**：恢复发生在 `applySidebarLayout(animated: false)` 之前，不会出现先展开再跳折叠的闪烁。
+- **只在状态变化时写盘**：侧栏按钮、`isLeftSidebarVisible`、`setLeftSidebarVisible`、`toggleLeftSidebar` 四条路径最终都汇到一处，重复设同值不会写 UserDefaults。
+- **恢复本身不写盘**：首次启动不会平白多出一个键。
+- **只存折叠 / 展开**：不存左栏宽度。宽度跟屏幕尺寸强相关，原样套回去往往不合适。
+- **脏数据静默忽略**：存档被写坏时按「没有历史」处理，不清数据。
+- **`resetPersistedState()` 只清存档**，不改当前界面；容器还活着时下一次展开 / 折叠会立刻写回。
+- **别和 `PPTabRestoration` / `PPAppearance` 共用键**：数据类型不同，会互相覆盖。
+- **iOS 12 可用**：只用了 `UserDefaults` + `Bool`。
+
+### 验证方法
+
+在 iPad / Mac 上收起左侧栏 → 从后台彻底杀掉 App → 重启，首帧就应该只有右栏；展开后再重启，应该带着左栏。把 `isEnabled` 设为 `false` 再试，每次启动都应该是展开的。
+
+### 已知限制
+
+侧栏按钮的图标目前不随折叠状态变化（展开、折叠都是 `sidebar.leading` / `☰`）。状态本身是准确的，只是视觉上还没区分。
 
 ## 深色模式（夜间模式）
 

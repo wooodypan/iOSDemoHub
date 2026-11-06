@@ -45,6 +45,32 @@ public final class SplitContainerViewController: UIViewController {
     // 内部唯一运行时状态：是否隐藏左栏。
     private var isSidebarHidden = false
 
+    // MARK: - 侧栏状态持久化（单实例覆盖）
+    //
+    // 两个属性默认都是 nil，意思是「不表态，跟随全局 PPSidebarRestoration」。
+    // 和 DetailHostViewController 的 Tab 恢复一样，只在 view 第一次加载（viewDidLoad）时求值一次：
+    // 在这之前设置立即生效；在这之后设置不会补读盘，也不会换保存用的键，
+    // 避免出现「从 A 键读、往 B 键写」的错位。
+
+    /// 本容器是否在首次加载时还原上次的侧栏折叠状态。
+    /// - `nil`（默认）：跟随全局 `PPSidebarRestoration.isEnabled`
+    /// - `true` / `false`：只对当前容器生效，覆盖全局
+    public var restoresSidebarStateOnLaunch: Bool?
+
+    /// 本容器专用的存档键。`nil`（默认）= 用全局 `PPSidebarRestoration.persistenceKey`。
+    /// 空字符串表示本容器不读也不写。
+    ///
+    /// 一个 App 里同时存在多个分栏容器（多窗口）时必须分开，否则两边会互相覆盖对方的状态。
+    /// - Note: 不能在上屏时自动按窗口 / 场景拼后缀，因为那一刻容器还没进窗口，view.window 是 nil。
+    public var sidebarStatePersistenceKey: String?
+
+    // 首次加载时求值出来的存档键；nil = 本容器不持久化（开关关着 / 键为空）。
+    private var resolvedSidebarStateKey: String?
+    // 是否已经求值过配置。无论开关开没开都会置位：之后运行期再打开全局开关，也不会追溯这个容器。
+    private var didResolveSidebarState = false
+    // 集成方在「读存档之前」显式调过 setLeftSidebarVisible：以现场为准，不拿存档覆盖。
+    private var hasExplicitSidebarStateBeforeRestore = false
+
     // 分割线相关常量。
     private let dividerHitWidth: CGFloat = 12   // 抓取区宽度（命中范围，越大越好抓）
     private let minLeftWidth: CGFloat = 220     // 左栏最小宽度
@@ -102,8 +128,11 @@ public final class SplitContainerViewController: UIViewController {
         embed(leftNavigationController, in: leftContainerView)
         embed(detailHost, in: rightContainerView)
 
-        // 套用“启动默认值”：若外部在加载前把 isLeftSidebarVisible 设为 false，
-        // isSidebarHidden 此时已是 true，这里按折叠状态布局一次（不带动画）。
+        // 先读回上次的折叠状态，再套布局。顺序不能反：
+        // 如果先按「展开」排一次再改成折叠，第一帧会明显闪一下。
+        restoreSidebarStateIfNeeded()
+
+        // 套用“启动状态”：恢复值，或外部在加载前显式设的值。不带动画。
         applySidebarLayout(animated: false)
     }
 
@@ -284,17 +313,70 @@ public final class SplitContainerViewController: UIViewController {
     /// 由于分割线、右栏的约束都锚定在左栏上，右栏会自动向左扩展填满空间。
     /// 读取当前真实状态请用 isLeftSidebarVisible（计算属性）。
     public func setLeftSidebarVisible(_ visible: Bool, animated: Bool) {
+        // 在读存档之前被调用，说明是集成方在声明「启动默认值」（文档一直支持这种用法）。
+        // 记下来，viewDidLoad 里就不再让存档覆盖它。要放在 guard 之前，否则设成和默认值相同会被漏掉。
+        if !didResolveSidebarState {
+            hasExplicitSidebarStateBeforeRestore = true
+        }
+
         let hidden = !visible
+        // 状态没变就提前返回，布局和写盘都不用做。
+        // 这里不会漏写盘：只有真的发生变化才需要写；加载前的显式设置由 restoreSidebarStateIfNeeded 负责落盘。
         guard hidden != isSidebarHidden else { return }
         isSidebarHidden = hidden
         // 同步详情宿主侧栏按钮的图标。
         detailHost.setSidebarCollapsed(hidden)
         applySidebarLayout(animated: animated)
+
+        // 侧栏按钮点击（onToggleSidebarRequest -> toggleLeftSidebar）、
+        // 集成方直接调 isLeftSidebarVisible / setLeftSidebarVisible、toggleLeftSidebar()，
+        // 三条路径最后都汇到这里，所以写盘只要这一个出口。
+        persistSidebarStateIfNeeded()
     }
 
     /// 在展开/折叠之间切换（带动画）。
     public func toggleLeftSidebar() {
         setLeftSidebarVisible(!isLeftSidebarVisible, animated: true)
+    }
+
+    // MARK: - 私有：侧栏状态恢复 / 保存
+
+    // 把「全局开关」和「本容器的两个覆盖项」合并成一份配置，只在 viewDidLoad 求值一次。
+    private func restoreSidebarStateIfNeeded() {
+        // viewDidLoad 只会走一次；这个标记是给「以后有人把调用挪到别处」留的保险。
+        guard !didResolveSidebarState else { return }
+        // 不管开关开着还是关着都置位：之后再把全局开关打开，也不会追溯这个已经上屏的容器。
+        didResolveSidebarState = true
+
+        // 三态合并：容器说过就听容器的，没表态才看全局。
+        let enabled = restoresSidebarStateOnLaunch ?? PPSidebarRestoration.isEnabled
+        guard enabled else { return }
+
+        let key = sidebarStatePersistenceKey ?? PPSidebarRestoration.persistenceKey
+        // 空键按未配置处理，避免多个容器挤到同一个空键上互相覆盖。
+        guard !key.isEmpty else { return }
+        resolvedSidebarStateKey = key
+
+        // 集成方在加载前显式设过：以现场为准，并把这份选择写回存档。
+        // 不写回的话，存档里会一直留着上一次的旧值，例如上次是折叠、这次业务要求默认展开。
+        if hasExplicitSidebarStateBeforeRestore {
+            PPSidebarRestoration.saveCollapsed(isSidebarHidden, forKey: key)
+            return
+        }
+
+        // 没存过 / 脏数据都返回 nil：静默按默认的展开状态走，不清坏数据。
+        guard let savedCollapsed = PPSidebarRestoration.loadCollapsed(forKey: key) else { return }
+
+        // 只改状态，布局统一交给 viewDidLoad 末尾那次 applySidebarLayout(animated: false)。
+        isSidebarHidden = savedCollapsed
+        // 同步宿主内部的折叠标记，保持和真实状态一致（本次不改按钮图标，但标记不能歪）。
+        detailHost.setSidebarCollapsed(savedCollapsed)
+    }
+
+    // 把当前折叠状态写进存档。没开启 / 键为空 / 还没求值，都直接跳过。
+    private func persistSidebarStateIfNeeded() {
+        guard didResolveSidebarState, let key = resolvedSidebarStateKey else { return }
+        PPSidebarRestoration.saveCollapsed(isSidebarHidden, forKey: key)
     }
 
     // 把当前 isSidebarHidden 状态套用到约束上（视图加载后才有意义）。
