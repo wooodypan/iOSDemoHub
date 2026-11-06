@@ -234,6 +234,180 @@ final class SidebarRestorationTests: XCTestCase {
         XCTAssertEqual(savedValue(forKey: key), true, "空键也不该往全局键上写")
     }
 
+    // MARK: - 身份标识（多容器隔离）
+    //
+    // 一个 App 里可能同时存在多个分栏容器（多窗口 / 多场景），默认它们会共用一把键。
+    // 第一条用例先把这个「不配身份就会串味」的行为钉住，剩下的验证配了身份之后各存各的。
+
+    @MainActor
+    func test两个容器共用全局键会互相覆盖() {
+        let key = makeKey()
+        defer { UserDefaults.standard.removeObject(forKey: key) }
+        prepareGlobals(key: key)
+
+        // 第一个窗口折叠：写进全局键。
+        let first = makeSplit()
+        first.isLeftSidebarVisible = false
+        XCTAssertEqual(savedValue(forKey: key), true)
+
+        // 第二个窗口新建，什么都没配，于是读到的是第一个窗口的状态。
+        let second = makeSplit()
+        XCTAssertFalse(second.isLeftSidebarVisible, "没配身份时两个容器共用一把键，第二个窗口继承了第一个窗口的折叠")
+
+        // 第二个窗口展开，把第一个窗口的存档顶掉。
+        second.isLeftSidebarVisible = true
+        XCTAssertEqual(savedValue(forKey: key), false, "反过来也成立：后操作的一方覆盖存档")
+    }
+
+    @MainActor
+    func test不同identity的容器互不干扰() {
+        let key = makeKey()
+        let keyA = key + ".A"
+        let keyB = key + ".B"
+        defer {
+            [key, keyA, keyB].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        }
+        prepareGlobals(key: key)
+
+        // A 窗口折叠：只写带后缀的键，裸键不该被动过。
+        let a = makeSplit { $0.sidebarStatePersistenceIdentity = "A" }
+        a.isLeftSidebarVisible = false
+        XCTAssertEqual(savedValue(forKey: keyA), true, "写的是 A 自己的键")
+        XCTAssertNil(UserDefaults.standard.object(forKey: key), "裸键不该被写")
+
+        // B 窗口新建：读不到 A 的存档，仍是默认展开；恢复本身不写盘。
+        let b = makeSplit { $0.sidebarStatePersistenceIdentity = "B" }
+        XCTAssertTrue(b.isLeftSidebarVisible, "B 不该继承 A 的折叠")
+        XCTAssertNil(UserDefaults.standard.object(forKey: keyB), "恢复本身不写盘")
+
+        // 再开一个 A 窗口：读回自己那份。
+        let aAgain = makeSplit { $0.sidebarStatePersistenceIdentity = "A" }
+        XCTAssertFalse(aAgain.isLeftSidebarVisible, "A 的存档还在")
+    }
+
+    @MainActor
+    func testidentity同时参与读和写() {
+        let key = makeKey()
+        let keyA = key + ".A"
+        defer {
+            [key, keyA].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        }
+        prepareGlobals(key: key)
+
+        // 只在带后缀的键上放假存档：读的时候忘了拼后缀，这里就读不到。
+        seed(true, key: keyA)
+        let split = makeSplit { $0.sidebarStatePersistenceIdentity = "A" }
+        XCTAssertFalse(split.isLeftSidebarVisible, "读要拼后缀")
+
+        // 再展开：写的时候同样要拼，不能写回裸键。
+        split.isLeftSidebarVisible = true
+        XCTAssertEqual(savedValue(forKey: keyA), false, "写也要拼后缀")
+        XCTAssertNil(UserDefaults.standard.object(forKey: key), "裸键始终不该被动过")
+    }
+
+    @MainActor
+    func test空identity等同于未配置() {
+        let key = makeKey()
+        defer {
+            [key, key + "."].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        }
+        prepareGlobals(key: key)
+
+        seed(true, key: key)
+        let split = makeSplit { $0.sidebarStatePersistenceIdentity = "" }
+        XCTAssertFalse(split.isLeftSidebarVisible, "空身份不拼后缀，行为和不设一样")
+
+        split.isLeftSidebarVisible = true
+        XCTAssertEqual(savedValue(forKey: key), false, "写回裸键")
+        XCTAssertNil(UserDefaults.standard.object(forKey: key + "."), "不该拼出只有一个点的怪键")
+    }
+
+    @MainActor
+    func testidentity拼在实例key之后() {
+        let globalKey = makeKey()
+        let instanceKey = makeKey()
+        let finalKey = instanceKey + ".w1"
+        defer {
+            [globalKey, instanceKey, finalKey].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        }
+        prepareGlobals(key: globalKey)
+
+        seed(true, key: finalKey)
+        let split = makeSplit {
+            $0.sidebarStatePersistenceKey = instanceKey
+            $0.sidebarStatePersistenceIdentity = "w1"
+        }
+        XCTAssertFalse(split.isLeftSidebarVisible, "后缀拼在实例键后面，不是拼在全局键后面")
+
+        split.isLeftSidebarVisible = true
+        XCTAssertEqual(savedValue(forKey: finalKey), false)
+        XCTAssertNil(UserDefaults.standard.object(forKey: instanceKey), "实例裸键不该被动过")
+        XCTAssertNil(UserDefaults.standard.object(forKey: globalKey), "全局键也不该被动过")
+    }
+
+    @MainActor
+    func test加载前显式设置写到带后缀的键() {
+        let key = makeKey()
+        let keyA = key + ".A"
+        defer {
+            [key, keyA].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        }
+        prepareGlobals(key: key)
+
+        // 上次是展开，这次业务要求默认折叠：显式设置优先，并把新值写回存档。
+        seed(false, key: keyA)
+        let split = makeSplit {
+            $0.sidebarStatePersistenceIdentity = "A"
+            $0.isLeftSidebarVisible = false
+        }
+
+        XCTAssertFalse(split.isLeftSidebarVisible, "以显式设置为准")
+        XCTAssertEqual(savedValue(forKey: keyA), true, "写回也走带后缀的键")
+        XCTAssertNil(UserDefaults.standard.object(forKey: key), "裸键不该被动过")
+    }
+
+    @MainActor
+    func test实例key为空时identity也不生效() {
+        let key = makeKey()
+        defer {
+            [key, ".A"].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        }
+        prepareGlobals(key: key)
+
+        seed(true, key: key)
+        let split = makeSplit {
+            $0.sidebarStatePersistenceKey = ""
+            $0.sidebarStatePersistenceIdentity = "A"
+        }
+        XCTAssertTrue(split.isLeftSidebarVisible, "基础键为空等于关掉这个能力，身份救不回来")
+
+        split.isLeftSidebarVisible = false
+        XCTAssertEqual(savedValue(forKey: key), true, "全局裸键没被动过")
+        XCTAssertNil(UserDefaults.standard.object(forKey: ".A"), "也不该拼出一个只有后缀的键")
+    }
+
+    @MainActor
+    func testresetPersistedState按identity清数据() {
+        let key = makeKey()
+        let keyA = key + ".A"
+        let keyB = key + ".B"
+        defer {
+            [key, keyA, keyB].forEach { UserDefaults.standard.removeObject(forKey: $0) }
+        }
+        prepareGlobals(key: key)
+
+        let a = makeSplit { $0.sidebarStatePersistenceIdentity = "A" }
+        a.isLeftSidebarVisible = false
+        XCTAssertEqual(savedValue(forKey: keyA), true)
+        seed(true, key: keyB)
+
+        PPSidebarRestoration.resetPersistedState(identity: "A")
+
+        XCTAssertNil(UserDefaults.standard.object(forKey: keyA), "只清指定身份的那把键")
+        XCTAssertEqual(savedValue(forKey: keyB), true, "别的窗口不受影响")
+        XCTAssertFalse(a.isLeftSidebarVisible, "只清数据，不动界面")
+    }
+
     // MARK: - 数据与生命周期边界
 
     @MainActor

@@ -47,7 +47,7 @@ public final class SplitContainerViewController: UIViewController {
 
     // MARK: - 侧栏状态持久化（单实例覆盖）
     //
-    // 两个属性默认都是 nil，意思是「不表态，跟随全局 PPSidebarRestoration」。
+    // 三个属性默认都是 nil，意思是「不表态，跟随全局 PPSidebarRestoration」。
     // 和 DetailHostViewController 的 Tab 恢复一样，只在 view 第一次加载（viewDidLoad）时求值一次：
     // 在这之前设置立即生效；在这之后设置不会补读盘，也不会换保存用的键，
     // 避免出现「从 A 键读、往 B 键写」的错位。
@@ -61,8 +61,27 @@ public final class SplitContainerViewController: UIViewController {
     /// 空字符串表示本容器不读也不写。
     ///
     /// 一个 App 里同时存在多个分栏容器（多窗口）时必须分开，否则两边会互相覆盖对方的状态。
+    /// 多数情况下用下面的 `sidebarStatePersistenceIdentity` 更省事，不用自己拼键。
     /// - Note: 不能在上屏时自动按窗口 / 场景拼后缀，因为那一刻容器还没进窗口，view.window 是 nil。
     public var sidebarStatePersistenceKey: String?
+
+    /// 本容器的身份标识，用来在基础键后面拼一段后缀，让多个容器各存一份、互不覆盖。
+    ///
+    /// 最终使用的键是 `（sidebarStatePersistenceKey ?? PPSidebarRestoration.persistenceKey）+ "." + identity`。
+    /// - `nil`（默认）/ 空字符串：不拼后缀，直接用基础键。这时多个容器会共用同一把键、互相覆盖，
+    ///   单窗口 App 不受影响。
+    /// - 基础键被设成空字符串时整个能力关闭，这条身份也就无处可拼。
+    ///
+    /// ```swift
+    /// // 每个窗口一个容器时，用场景自带的持久标识
+    /// split.sidebarStatePersistenceIdentity = session.persistentIdentifier
+    /// ```
+    ///
+    /// - Important: 必须是**跨启动稳定**的值。用每次启动新生成的 `UUID()` 会导致每次写到一个新键上，
+    ///   看起来像「永远恢复不了」。`UISceneSession.persistentIdentifier` 是符合要求的。
+    /// - Note: 和另外两个属性一样只在 `viewDidLoad` 求值一次。运行期改它不会换键、也不会重新读盘，
+    ///   已经上屏的容器会继续用当初拼出来的那把键读写。
+    public var sidebarStatePersistenceIdentity: String?
 
     // 首次加载时求值出来的存档键；nil = 本容器不持久化（开关关着 / 键为空）。
     private var resolvedSidebarStateKey: String?
@@ -341,20 +360,23 @@ public final class SplitContainerViewController: UIViewController {
 
     // MARK: - 私有：侧栏状态恢复 / 保存
 
-    // 把「全局开关」和「本容器的两个覆盖项」合并成一份配置，只在 viewDidLoad 求值一次。
+    // 把「全局开关」和「本容器的三个覆盖项」合并成一份配置，只在 viewDidLoad 求值一次。
     private func restoreSidebarStateIfNeeded() {
         // viewDidLoad 只会走一次；这个标记是给「以后有人把调用挪到别处」留的保险。
         guard !didResolveSidebarState else { return }
         // 不管开关开着还是关着都置位：之后再把全局开关打开，也不会追溯这个已经上屏的容器。
         didResolveSidebarState = true
 
-        // 三态合并：容器说过就听容器的，没表态才看全局。
+        // 开关是三态的：容器说过就听容器的，没表态才看全局。
         let enabled = restoresSidebarStateOnLaunch ?? PPSidebarRestoration.isEnabled
         guard enabled else { return }
 
-        let key = sidebarStatePersistenceKey ?? PPSidebarRestoration.persistenceKey
-        // 空键按未配置处理，避免多个容器挤到同一个空键上互相覆盖。
-        guard !key.isEmpty else { return }
+        // 基础键同理：容器给了自定义键就用它，否则落到全局键上。
+        let baseKey = sidebarStatePersistenceKey ?? PPSidebarRestoration.persistenceKey
+        // 再拼身份后缀。resolvedKey 里已经处理了「基础键为空 → 不持久化」和「身份为空 → 不拼」，
+        // 所以这里拿到的就是最终要用的键；它不会再为空，也就不需要另外判空。
+        guard let key = PPSidebarRestoration.resolvedKey(base: baseKey,
+                                                         identity: sidebarStatePersistenceIdentity) else { return }
         resolvedSidebarStateKey = key
 
         // 集成方在加载前显式设过：以现场为准，并把这份选择写回存档。

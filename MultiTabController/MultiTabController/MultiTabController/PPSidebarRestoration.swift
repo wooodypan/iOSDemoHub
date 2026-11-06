@@ -51,14 +51,42 @@ public enum PPSidebarRestoration {
     /// - Important: 只删存档，不会改当前界面上的侧栏状态。
     ///   容器还活着时，用户下一次展开 / 折叠会立刻把新状态写回去。
     ///   想彻底清干净，请在根控制器加载之前调用。
-    /// - 只清 `persistenceKey` 这一把键；容器用 `sidebarStatePersistenceKey` 自定义的键要自己清。
+    /// - 只清 `persistenceKey` 这一把**裸键**；容器配了 `sidebarStatePersistenceIdentity`
+    ///   或 `sidebarStatePersistenceKey` 的，存档在别的键上，请用 `resetPersistedState(identity:)` 或自己清。
     public static func resetPersistedState() {
         removePersistedState(forKey: persistenceKey)
+    }
+
+    /// 清掉「全局键 + 身份后缀」下的存档，对应容器设了 `sidebarStatePersistenceIdentity` 的场景。
+    ///
+    /// 一个 App 开了多个窗口时，每个窗口的存档在各自的带后缀键上；这个入口只清你指定的那一个，
+    /// 别的窗口不受影响。
+    ///
+    /// - Parameter identity: 容器上设的那个身份标识。传空字符串等同于 `resetPersistedState()`（不加后缀）。
+    /// - Important: 和 `resetPersistedState()` 一样，只删存档，不改当前界面。
+    /// - Note: 这里的 base 固定是 `persistenceKey`。容器用 `sidebarStatePersistenceKey` 换过基础键的，
+    ///   本方法清不到，需要自己按拼好的键删。
+    public static func resetPersistedState(identity: String) {
+        guard let key = resolvedKey(base: persistenceKey, identity: identity) else { return }
+        removePersistedState(forKey: key)
     }
 
     // MARK: - 内部：存档读写
     //
     // 全部收在这里，容器不直接碰 UserDefaults；以后要换存储（文件 / 数据库 / App Group）只改这一处。
+
+    /// 把「基础键 + 容器身份」拼成真正落盘的键。返回 `nil` 表示这次不持久化。
+    ///
+    /// 规则只有三条，容器和 `resetPersistedState(identity:)` 都走这里，
+    /// 免得出现「读的时候拼了、写的时候忘了拼」这种一半对一半错的错位：
+    ///   - 基础键为空 → 不持久化。空键的既有语义就是「不读不写」，配了身份也救不回来。
+    ///   - 身份为 `nil` 或空字符串 → 原样用基础键，和没有这个能力时逐字节一致，老存档能直接读到。
+    ///   - 两者都有值 → `基础键.身份`，分隔符用点，和 README 里手拼的写法保持一致。
+    static func resolvedKey(base: String, identity: String?) -> String? {
+        guard !base.isEmpty else { return nil }
+        guard let identity = identity, !identity.isEmpty else { return base }
+        return base + "." + identity
+    }
 
     /// 读回上次的折叠状态。返回 nil 表示「没有历史」或者「存档坏了」。
     ///

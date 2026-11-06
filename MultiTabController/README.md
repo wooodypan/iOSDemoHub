@@ -24,7 +24,7 @@
 - **DeviceHelper / WindowManager**：设备判断与多窗口（新窗口）能力
 - **PPAppearance**：App 内手动切换浅色 / 深色，不跟系统。`PPAppearance.mode = .dark` 一行生效，可选持久化记忆；默认仍是跟随系统，iOS 12 上自动无效。详见下文「[App 内手动切换浅色 / 深色](#app-内手动切换浅色--深色)」
 - **冷启动恢复上次的 Tab**：`PPTabRestoration.enable { ... }` 一行接入，**默认关闭**（不打开时零副作用）。全局开关 + 单宿主覆盖，多窗口可各存一份；恢复 Tab 顺序、选中项、预览标记与空 Tab。详见下文「[冷启动恢复上次的 Tab](#冷启动恢复上次的-tab)」
-- **记住侧栏折叠状态**：用户收起左侧栏后，冷启动自动还原（展开也一样）。**默认开启**，集成方不用写代码；全局开关 `PPSidebarRestoration.isEnabled`，单容器可用 `sidebarStatePersistenceKey` 让多窗口各存一份。详见下文「[记住侧栏折叠状态](#记住侧栏折叠状态)」
+- **记住侧栏折叠状态**：用户收起左侧栏后，冷启动自动还原（展开也一样）。**默认开启**，单容器 App 不用写代码；一个 App 里有多个容器（多窗口 / 多场景）时请给每个容器设 `sidebarStatePersistenceIdentity`，**不设就会共用同一把键、互相覆盖折叠状态**。详见下文「[记住侧栏折叠状态](#记住侧栏折叠状态)」
 - **同时兼容两套生命周期**：UIScene 生命周期（iOS 27 SDK 起 Apple 强制要求，见 [TN3187](https://developer.apple.com/documentation/Technotes/tn3187-Migrating-to-the-UIKit-scene-based-life-cycle)）与传统 AppDelegate 生命周期，见下文「[生命周期兼容](#生命周期兼容uiscene--appdelegate)」
 
 > 示例 / Demo：`ArticleListViewController.swift`、`DataStore.swift`、`AppDelegate.swift` 位于宿主层（与 `AppDelegate` 平级），**不随 pod / SPM 发布**。它们是仓库自带的完整接线示例；集成时请用你自己的列表控制器，只需让它持有 `PPContentRouting` 并产出 `PPContentItem` 即可。
@@ -411,6 +411,8 @@ func scene(_ scene: UIScene,
 
 **默认开启，集成方什么都不用写。**
 
+> 单容器 App 到这里就够了。App 里同时有多个 `SplitContainerViewController`（多窗口、多场景）时，请给每个容器设不同的 `sidebarStatePersistenceIdentity`——一个都不设的话几个窗口会共用同一把键，后操作的一方会把别人的折叠状态顶掉。详见下面「[多窗口](#多窗口)」。
+
 ### 关闭
 
 在创建根控制器之前：
@@ -427,18 +429,23 @@ PPSidebarRestoration.isEnabled = false
 |---|---|
 | `PPSidebarRestoration.isEnabled` | 全局开关，默认 `true`。要在根控制器创建之前设置 |
 | `PPSidebarRestoration.persistenceKey` | 存档键，默认 `"PPSidebarRestoration"`。空字符串表示不读不写 |
-| `PPSidebarRestoration.resetPersistedState()` | 只清存档，不改当前界面 |
+| `PPSidebarRestoration.resetPersistedState()` | 只清**裸键**上的存档，不改当前界面 |
+| `PPSidebarRestoration.resetPersistedState(identity:)` | 只清指定身份后缀的那把键，别的窗口不受影响 |
 | `SplitContainerViewController.restoresSidebarStateOnLaunch` | `Bool?`，默认 `nil` 跟随全局；单容器覆盖 |
-| `SplitContainerViewController.sidebarStatePersistenceKey` | `String?`，默认 `nil` 用全局键；单容器指定自己的键 |
+| `SplitContainerViewController.sidebarStatePersistenceKey` | `String?`，默认 `nil` 用全局键；单容器指定整把键 |
+| `SplitContainerViewController.sidebarStatePersistenceIdentity` | `String?`，默认 `nil` 不拼后缀；单容器身份标识，拼成 `基础键.身份`。**多窗口必须设**，且要跨启动稳定 |
 
 合并规则：
 
 ```text
-enabled = restoresSidebarStateOnLaunch ?? PPSidebarRestoration.isEnabled
-key     = sidebarStatePersistenceKey ?? PPSidebarRestoration.persistenceKey
+enabled  = restoresSidebarStateOnLaunch ?? PPSidebarRestoration.isEnabled
+baseKey  = sidebarStatePersistenceKey   ?? PPSidebarRestoration.persistenceKey
+identity = sidebarStatePersistenceIdentity ?? ""      // 空 = 不拼后缀
+key      = identity.isEmpty ? baseKey : baseKey + "." + identity
+           // baseKey 为空 → 整个能力关闭，既不读也不写，配了身份也救不回来
 ```
 
-两个属性都只在容器的 `viewDidLoad` 求值一次，必须在上屏之前设置。
+三个属性都只在容器的 `viewDidLoad` 求值一次，必须在上屏之前设置。
 
 ### 显式设置优先于存档
 
@@ -449,17 +456,26 @@ let split = SplitContainerViewController(...)
 split.isLeftSidebarVisible = true   // 不管上次是不是折叠，这次强制展开，并记为新的默认值
 ```
 
+配了 `sidebarStatePersistenceIdentity` 时，这次写回落在带后缀的键上，不会影响其他窗口的存档。
+
 反过来要注意：如果每次启动都无条件写这一行，持久化就永远不会生效，因为存档每次都被覆盖。
 
 ### 多窗口
 
-一个 App 里同时有多个 `SplitContainerViewController` 时，必须给每个容器不同的键，否则会互相覆盖：
+一个 App 里同时有多个 `SplitContainerViewController` 时，必须给每个容器一个身份，否则会互相覆盖：
 
 ```swift
-split.sidebarStatePersistenceKey = "PPSidebarRestoration." + session.persistentIdentifier
+// 每个窗口一个容器：用场景自带的持久标识，重启后不变
+split.sidebarStatePersistenceIdentity = session.persistentIdentifier
+// 最终键 = "PPSidebarRestoration." + session.persistentIdentifier
 ```
 
-同样要在容器上屏之前设。库里不能自动按场景拼后缀：`viewDidLoad` 那一刻容器还没进窗口，拿不到 scene。
+同样要在容器上屏之前设。库里不能自动按场景拼后缀：`viewDidLoad` 那一刻容器还没进窗口，拿不到 scene，所以由你告诉它「我是谁」。
+
+两点要注意：
+
+- 身份必须是**跨启动稳定**的值。用每次启动新生成的 `UUID()` 会让每次写到新键上，表现成「永远记不住」。
+- 确实需要自定义整把键时，继续用 `sidebarStatePersistenceKey`（`"PPSidebarRestoration." + session.persistentIdentifier` 这种手拼写法仍然有效）。两种方式叠加时结果是「自定义键 + 身份」，同一个 App 里建议只用一种，别混着来。
 
 ### 原理与边界
 
@@ -469,9 +485,12 @@ split.sidebarStatePersistenceKey = "PPSidebarRestoration." + session.persistentI
 - **恢复本身不写盘**：首次启动不会平白多出一个键。
 - **只存折叠 / 展开**：不存左栏宽度。宽度跟屏幕尺寸强相关，原样套回去往往不合适。
 - **脏数据静默忽略**：存档被写坏时按「没有历史」处理，不清数据。
-- **`resetPersistedState()` 只清存档**，不改当前界面；容器还活着时下一次展开 / 折叠会立刻写回。
+- **`resetPersistedState()` 只清裸键**：它只删 `persistenceKey` 这一把，不改当前界面；容器还活着时下一次展开 / 折叠会立刻写回。设了身份的用 `resetPersistedState(identity:)`；容器换过 `sidebarStatePersistenceKey` 的两个入口都清不到，要自己按拼好的键删。
+- **身份不改变空键语义**：基础键为空时整个能力关闭，配了 `sidebarStatePersistenceIdentity` 也不生效。身份只负责拼后缀，救不了空键。
+- **运行期改身份不追溯**：和另外两个属性一样，键在 `viewDidLoad` 时就固定了。之后再改不会换键、也不会重新读盘，不会出现「从 A 后缀读、往 B 后缀写」的错位。
+- **升级说明（存档兼容）**：不配身份的 App 键名逐字节不变，老存档无缝沿用。开始配身份之后，以前写在裸键上的存档读不到，首次启动会回到默认展开，之后写进带后缀的键。这是预期行为——旧裸键本来就是多个窗口混写的，硬迁过来比没有更糟。旧裸键可以用 `resetPersistedState()` 清掉。
 - **别和 `PPTabRestoration` / `PPAppearance` 共用键**：数据类型不同，会互相覆盖。
-- **iOS 12 可用**：只用了 `UserDefaults` + `Bool`。
+- **iOS 12 可用**：只用了 `UserDefaults` + `Bool`；身份也只是字符串拼接，不依赖任何新 API。
 
 ### 验证方法
 
